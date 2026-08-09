@@ -1,18 +1,44 @@
 using ArogyaPulse.Api.Interfaces;
 using ArogyaPulse.Api.DTOs;
+
 namespace ArogyaPulse.Api.Services
 {
     public class AiChatService : IAiChatService
     {
-        public Task<ChatResponseDto> GetGuidanceAsync(ChatRequestDto request)
+        private readonly IPatientRepository _patientRepository;
+
+        public AiChatService(IPatientRepository patientRepository)
+        {
+            _patientRepository = patientRepository;
+        }
+
+        public async Task<ChatResponseDto> GetGuidanceAsync(ChatRequestDto request)
         {
             var queryLower = request.Query.ToLower();
             bool isHindi = request.Language.ToLower() == "hi" || ContainsHindi(request.Query);
+
             var alerts = new List<string>();
             var actions = new List<string>();
             string responseText = "";
             string severity = "Info";
-            if (queryLower.Contains("spo2") || queryLower.Contains("oxygen") || queryLower.Contains("hypoxia") || queryLower.Contains("ऑक्सीजन") || queryLower.Contains("सांस"))
+            string? patientContext = null;
+
+            // If a PatientId is provided, fetch context
+            if (request.PatientId.HasValue)
+            {
+                var patient = await _patientRepository.GetByIdAsync(request.PatientId.Value);
+                if (patient != null)
+                {
+                    patientContext = $"Patient: {patient.Name}, Age: {patient.Age}, Gender: {patient.Gender}, " +
+                                    $"Village: {patient.Village}, BP: {patient.Bp}, SpO2: {patient.SpO2}%, " +
+                                    $"Temp: {patient.Temp:F1}°C, Glucose: {patient.Glucose} mg/dL, " +
+                                    $"Risk: {patient.RiskLevel} ({patient.RiskScore}/100)";
+                }
+            }
+
+            // SpO2 / Oxygen topics
+            if (queryLower.Contains("spo2") || queryLower.Contains("oxygen") || queryLower.Contains("hypoxia") ||
+                queryLower.Contains("ऑक्सीजन") || queryLower.Contains("सांस"))
             {
                 if (queryLower.Contains("< 90") || queryLower.Contains("90") || queryLower.Contains("कम"))
                 {
@@ -20,7 +46,7 @@ namespace ArogyaPulse.Api.Services
                     if (isHindi)
                     {
                         responseText = "⚠️ **गंभीर हाइपोक्सिया (SpO2 < 90%) आपातकालीन मार्गदर्शन:**\n" +
-                                       "जब मरीज का SpO2 90% से कम होता है, तो यह जीवन के लिए खतरा है। तुरंत आपातकालीन कार्रवाई आवश्यक है।";
+                                       "जब मरीज का SpO2 90% से कम होता है, तो यह गंभीर श्वसन विफलता का संकेत है। तुरंत आपातकालीन कार्रवाई आवश्यक है।";
                         alerts.Add("SpO2 < 90% गंभीर हाइपोक्सिया का संकेत है!");
                         actions.Add("मरीज को 2-4 लीटर/मिनट की दर से पूरक ऑक्सीजन दें।");
                         actions.Add("मरीज को बैठने की स्थिति (Fowler's position) में रखें।");
@@ -56,9 +82,13 @@ namespace ArogyaPulse.Api.Services
                     }
                 }
             }
-            else if (queryLower.Contains("bp") || queryLower.Contains("pressure") || queryLower.Contains("hypertension") || queryLower.Contains("बीपी") || queryLower.Contains("रक्तचाप") || queryLower.Contains("pre-eclampsia") || queryLower.Contains("eclampsia"))
+            // Blood Pressure / Hypertension / Pre-eclampsia
+            else if (queryLower.Contains("bp") || queryLower.Contains("pressure") || queryLower.Contains("hypertension") ||
+                     queryLower.Contains("बीपी") || queryLower.Contains("रक्तचाप") ||
+                     queryLower.Contains("pre-eclampsia") || queryLower.Contains("eclampsia"))
             {
-                if (queryLower.Contains("preg") || queryLower.Contains("गर्भवती") || queryLower.Contains("pre-eclampsia") || queryLower.Contains("गर्भावस्था"))
+                if (queryLower.Contains("preg") || queryLower.Contains("गर्भवती") ||
+                    queryLower.Contains("pre-eclampsia") || queryLower.Contains("गर्भावस्था"))
                 {
                     severity = "Critical";
                     if (isHindi)
@@ -73,7 +103,7 @@ namespace ArogyaPulse.Api.Services
                     else
                     {
                         responseText = "🤰 **Gestational Pre-Eclampsia Clinical Protocol:**\n" +
-                                       "Blood Pressure ≥ 140/90 mmHg in a pregnant woman triggers an automatic obstetric high-risk alert (+35 points).";
+                                       "Blood Pressure ≥ 140/90 mmHg in a pregnant woman triggers an automatic obstetric high-risk alert (+45 points).";
                         alerts.Add("Pre-eclampsia poses high risk of seizures (eclampsia) and fetal compromise!");
                         alerts.Add("Warning signs: Severe headache, facial edema, visual disturbances, upper abdominal pain.");
                         actions.Add("Immediate referral to District Hospital Obstetric emergency department.");
@@ -100,7 +130,10 @@ namespace ArogyaPulse.Api.Services
                     }
                 }
             }
-            else if (queryLower.Contains("fever") || queryLower.Contains("temp") || queryLower.Contains("बुखार") || queryLower.Contains("तापमान") || queryLower.Contains("glucose") || queryLower.Contains("sugar") || queryLower.Contains("शुगर"))
+            // Fever / Temperature / Glucose / Sugar
+            else if (queryLower.Contains("fever") || queryLower.Contains("temp") ||
+                     queryLower.Contains("बुखार") || queryLower.Contains("तापमान") ||
+                     queryLower.Contains("glucose") || queryLower.Contains("sugar") || queryLower.Contains("शुगर"))
             {
                 if (isHindi)
                 {
@@ -119,34 +152,104 @@ namespace ArogyaPulse.Api.Services
                     actions.Add("Re-assess vital signs within 30 minutes.");
                 }
             }
+            // Dehydration / Diarrhea (new topic)
+            else if (queryLower.Contains("dehydration") || queryLower.Contains("diarrhea") || queryLower.Contains("diarrhoea") ||
+                     queryLower.Contains("ors") || queryLower.Contains("दस्त") || queryLower.Contains("निर्जलीकरण"))
+            {
+                severity = "Warning";
+                if (isHindi)
+                {
+                    responseText = "💧 **निर्जलीकरण / दस्त प्रबंधन (WHO ORS प्रोटोकॉल):**\n" +
+                                   "• हल्का: मुँह सूखा, प्यास बढ़ी → ORS घोल हर 15 मिनट में।\n" +
+                                   "• मध्यम: आँखें धँसी, त्वचा में लचीलापन कम → ORS + जिंक सप्लीमेंट।\n" +
+                                   "• गंभीर: बेहोशी, पेशाब बंद → तुरंत IV तरल पदार्थ के लिए रेफर करें।";
+                    alerts.Add("बच्चों और बुजुर्गों में निर्जलीकरण तेजी से गंभीर हो सकता है।");
+                    actions.Add("ORS घोल तैयार करें: 1 लीटर साफ पानी + 1 ORS पैकेट।");
+                    actions.Add("यदि 4 घंटे में सुधार न हो तो PHC रेफर करें।");
+                }
+                else
+                {
+                    responseText = "💧 **Dehydration / Diarrhea Management (WHO ORS Protocol):**\n" +
+                                   "• Mild: Dry mouth, increased thirst → ORS solution every 15 minutes.\n" +
+                                   "• Moderate: Sunken eyes, reduced skin turgor → ORS + Zinc supplementation.\n" +
+                                   "• Severe: Lethargy, no urine output → Immediate IV fluid referral.";
+                    alerts.Add("Children and elderly patients are at high risk of rapid deterioration.");
+                    actions.Add("Prepare ORS: 1 liter clean water + 1 ORS packet.");
+                    actions.Add("If no improvement in 4 hours, refer to PHC/CHC.");
+                }
+            }
+            // Malaria screening (new topic)
+            else if (queryLower.Contains("malaria") || queryLower.Contains("मलेरिया") || queryLower.Contains("mosquito") ||
+                     queryLower.Contains("मच्छर"))
+            {
+                severity = "Warning";
+                if (isHindi)
+                {
+                    responseText = "🦟 **मलेरिया जांच प्रोटोकॉल:**\n" +
+                                   "• लक्षण: तेज बुखार (ठंड के साथ), सिरदर्द, शरीर दर्द, पसीना।\n" +
+                                   "• RDT (रैपिड डायग्नोस्टिक टेस्ट) करें।\n" +
+                                   "• Pf+ (फॉल्सीपेरम) → ACT दवाई तुरंत शुरू करें।\n" +
+                                   "• Pv+ (वाइवैक्स) → क्लोरोक्वीन + प्राइमाक्वीन।";
+                    actions.Add("रोगी का तापमान हर 4 घंटे में मापें।");
+                    actions.Add("यदि RDT पॉजिटिव है, तो PHC को तुरंत सूचित करें।");
+                }
+                else
+                {
+                    responseText = "🦟 **Malaria Screening Protocol:**\n" +
+                                   "• Symptoms: High fever with chills, headache, body ache, sweating.\n" +
+                                   "• Perform RDT (Rapid Diagnostic Test).\n" +
+                                   "• Pf+ (Falciparum) → Start ACT (Artemisinin Combination Therapy) immediately.\n" +
+                                   "• Pv+ (Vivax) → Chloroquine + Primaquine course.";
+                    actions.Add("Monitor temperature every 4 hours.");
+                    actions.Add("If RDT positive, notify PHC immediately for case reporting.");
+                }
+            }
+            // Default / Welcome
             else
             {
                 if (isHindi)
                 {
                     responseText = "🤖 **आरोग्यपल्स एआई आशा सहायक में आपका स्वागत है!**\n" +
                                    "मैं प्राथमिक स्वास्थ्य देखभाल और WHO/NHM ट्राइएज दिशानिर्देशों में सहायता कर सकता हूँ।\n\n" +
-                                   "आप मुझसे बीपी (BP), ऑक्सीजन (SpO2), बुखार (Fever), गर्भावस्था (Pregnancy) या लो शुगर के बारे में पूछ सकते हैं।";
-                    actions.Add("उदाहरण प्रश्न: 'जब SpO2 < 90% हो तो क्या करें?'");
-                    actions.Add("उदाहरण प्रश्न: 'गर्भावस्था में उच्च बीपी के क्या लक्षण हैं?'");
+                                   "**उपलब्ध विषय:**\n" +
+                                   "• बीपी (BP) / रक्तचाप\n" +
+                                   "• ऑक्सीजन (SpO2) / सांस की तकलीफ\n" +
+                                   "• बुखार / तापमान / शुगर\n" +
+                                   "• गर्भावस्था / प्री-एकलम्पसिया\n" +
+                                   "• दस्त / निर्जलीकरण / ORS\n" +
+                                   "• मलेरिया जांच";
+                    actions.Add("उदाहरण: 'जब SpO2 < 90% हो तो क्या करें?'");
+                    actions.Add("उदाहरण: 'गर्भावस्था में उच्च बीपी के क्या लक्षण हैं?'");
+                    actions.Add("उदाहरण: 'दस्त में ORS कैसे दें?'");
                 }
                 else
                 {
                     responseText = "🤖 **Welcome to ArogyaPulse AI ASHA Assistant!**\n" +
                                    "I provide instant clinical decision support following WHO and NHM India rural triage guidelines.\n\n" +
-                                   "Feel free to ask about vital sign thresholds, hypoxia emergency protocols, pre-eclampsia warnings, or high fever care.";
-                    actions.Add("Sample question: 'What to do when SpO2 is below 90%?'");
-                    actions.Add("Sample question: 'Pre-eclampsia warning signs and BP thresholds'");
+                                   "**Available Topics:**\n" +
+                                   "• Blood Pressure / Hypertension\n" +
+                                   "• SpO2 / Oxygen / Hypoxia\n" +
+                                   "• Fever / Temperature / Glucose\n" +
+                                   "• Pregnancy / Pre-eclampsia\n" +
+                                   "• Dehydration / Diarrhea / ORS\n" +
+                                   "• Malaria Screening";
+                    actions.Add("Try: 'What to do when SpO2 is below 90%?'");
+                    actions.Add("Try: 'Pre-eclampsia warning signs and BP thresholds'");
+                    actions.Add("Try: 'How to prepare ORS for dehydration?'");
                 }
             }
-            return Task.FromResult(new ChatResponseDto
+
+            return new ChatResponseDto
             {
                 Response = responseText,
                 ClinicalAlerts = alerts,
                 ActionSteps = actions,
                 Severity = severity,
+                PatientContext = patientContext,
                 Timestamp = DateTime.UtcNow
-            });
+            };
         }
+
         private bool ContainsHindi(string text)
         {
             return text.Any(c => c >= 0x0900 && c <= 0x097F);

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using ArogyaPulse.Api.Interfaces;
 using ArogyaPulse.Api.DTOs;
 using AutoMapper;
+
 namespace ArogyaPulse.Api.Controllers
 {
     [ApiController]
@@ -29,30 +30,13 @@ namespace ArogyaPulse.Api.Controllers
 
             var riskOrder = new Dictionary<string, int> { { "High", 3 }, { "Medium", 2 }, { "Low", 1 } };
 
-            var sorted = patients
+            // Map through AutoMapper — no inline name-based fabrication
+            var dtos = _mapper.Map<List<PatientResponseDto>>(patients);
+
+            var sorted = dtos
                 .OrderByDescending(p => riskOrder.GetValueOrDefault(p.RiskLevel, 0))
                 .ThenByDescending(p => p.RiskScore)
                 .ThenByDescending(p => p.Timestamp)
-                .Select(p => new
-                {
-                    p.Id,
-                    p.Name,
-                    Gender = !string.IsNullOrWhiteSpace(p.Gender) ? p.Gender : (p.Name.Contains("Rajesh") || p.Name.Contains("Vikram") || p.Name.Contains("Ramesh") ? "Male" : "Female"),
-                    BloodGroup = !string.IsNullOrWhiteSpace(p.BloodGroup) ? p.BloodGroup : (p.Name.Contains("Rajesh") ? "A+" : p.Name.Contains("Vikram") ? "B-" : p.Name.Contains("Priya") ? "B+" : "O+"),
-                    p.Village,
-                    p.Bp,
-                    p.SpO2,
-                    p.Temp,
-                    p.Glucose,
-                    p.Symptoms,
-                    IsPregnant = (p.Gender == "Male" || p.Name.Contains("Rajesh") || p.Name.Contains("Vikram") || p.Name.Contains("Ramesh")) ? false : p.IsPregnant,
-                    p.RiskScore,
-                    p.RiskLevel,
-                    p.Status,
-                    p.DoctorNotes,
-                    p.Timestamp,
-                    vitals = new { p.Bp, p.SpO2, p.Temp, p.Glucose }
-                })
                 .ToList();
 
             return Ok(new
@@ -79,15 +63,21 @@ namespace ArogyaPulse.Api.Controllers
 
             var stats = new
             {
-                totalPatients = patients.Count + 1416, // Includes legacy baseline screened patient count
-                activeScreenedThisMonth = patients.Count,
+                totalPatients = patients.Count,
                 highRisk = patients.Count(p => p.RiskLevel == "High"),
                 mediumRisk = patients.Count(p => p.RiskLevel == "Medium"),
                 lowRisk = patients.Count(p => p.RiskLevel == "Low"),
-                connectedVillages = villageStats.Count > 0 ? villageStats.Count : 4,
-                avgReferralTime = "18 min",
-                syncAccuracy = "99.4%",
-                highRiskAlertsSent = patients.Count(p => p.RiskLevel == "High")
+                connectedVillages = villageStats.Count,
+                averageRiskScore = patients.Count > 0
+                    ? Math.Round(patients.Average(p => p.RiskScore), 1)
+                    : 0,
+                highRiskPercentage = patients.Count > 0
+                    ? Math.Round((double)patients.Count(p => p.RiskLevel == "High") / patients.Count * 100, 1)
+                    : 0,
+                pendingReview = patients.Count(p => p.Status == "Pending"),
+                referred = patients.Count(p => p.Status == "Referred to CHC"),
+                discharged = patients.Count(p => p.Status == "Discharged"),
+                villageBreakdown = villageStats
             };
 
             return Ok(new { success = true, data = stats });

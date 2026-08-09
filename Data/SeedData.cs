@@ -6,6 +6,7 @@ namespace ArogyaPulse.Api.Data
     {
         public static void Initialize(AppDbContext context)
         {
+            // Migrate any legacy records that have empty Gender/BloodGroup
             var existingPatients = context.Patients.ToList();
             if (existingPatients.Any())
             {
@@ -14,12 +15,18 @@ namespace ArogyaPulse.Api.Data
                 {
                     if (string.IsNullOrWhiteSpace(p.Gender))
                     {
-                        p.Gender = (p.Name.Contains("Rajesh") || p.Name.Contains("Vikram") || p.Name.Contains("Ramesh")) ? "Male" : "Female";
-                        p.BloodGroup = p.Name.Contains("Rajesh") ? "A+" : p.Name.Contains("Vikram") ? "B-" : p.Name.Contains("Priya") ? "B+" : "O+";
-                        if (p.Gender != "Female")
-                        {
-                            p.IsPregnant = false;
-                        }
+                        p.Gender = "Unknown";
+                        modified = true;
+                    }
+                    if (string.IsNullOrWhiteSpace(p.BloodGroup))
+                    {
+                        p.BloodGroup = "Unknown";
+                        modified = true;
+                    }
+                    // Males cannot be pregnant
+                    if (p.Gender != "Female" && p.IsPregnant)
+                    {
+                        p.IsPregnant = false;
                         modified = true;
                     }
                 }
@@ -30,6 +37,7 @@ namespace ArogyaPulse.Api.Data
                 return;
             }
 
+            // Fresh seed data with explicit, honest values
             var patients = new List<Patient>
             {
                 new Patient
@@ -45,7 +53,7 @@ namespace ArogyaPulse.Api.Data
                     Glucose = 210,
                     Symptoms = "Severe headache, facial edema, visual disturbance",
                     IsPregnant = true,
-                    RiskScore = 140,
+                    RiskScore = 100,
                     RiskLevel = "High",
                     Status = "Referred to CHC",
                     DoctorNotes = "Urgent obstetric triage required. Transferred via ambulance.",

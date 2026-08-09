@@ -1,14 +1,22 @@
 using ArogyaPulse.Api.Interfaces;
 using ArogyaPulse.Api.Models;
+
 namespace ArogyaPulse.Api.Services
 {
+    /// <summary>
+    /// Logging-only alert stub. In production, this would integrate with
+    /// an SMS gateway (e.g., Twilio) or messaging API. Currently logs
+    /// the alert message for demonstration purposes.
+    /// </summary>
     public class NotificationService : INotificationService
     {
         private readonly ILogger<NotificationService> _logger;
+
         public NotificationService(ILogger<NotificationService> logger)
         {
             _logger = logger;
         }
+
         public Task<bool> SendHighRiskAlertAsync(Patient patient)
         {
             var message =
@@ -19,8 +27,10 @@ namespace ArogyaPulse.Api.Services
                 $"Risk Level: {patient.RiskLevel}\n" +
                 $"Risk Score: {patient.RiskScore}/100\n\n" +
                 $"Please review immediately on the Doctor Dashboard.";
-            _logger.LogInformation("[WhatsApp Service] Sending alert to District Doctor...");
-            _logger.LogInformation("[Message Content]:\n{Message}", message);
+
+            _logger.LogInformation("[Alert Service] High-risk alert triggered for patient #{Id}", patient.Id);
+            _logger.LogInformation("[Alert Content]:\n{Message}", message);
+
             return Task.FromResult(true);
         }
     }
