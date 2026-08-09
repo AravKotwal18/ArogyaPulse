@@ -5,6 +5,8 @@ namespace ArogyaPulse.Api.DTOs
         public int Id { get; set; }
         public string Name { get; set; } = string.Empty;
         public int Age { get; set; }
+        public string Gender { get; set; } = "Female";
+        public string BloodGroup { get; set; } = "Unknown";
         public string Village { get; set; } = string.Empty;
         public string Bp { get; set; } = string.Empty;
         public int SpO2 { get; set; }
