@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArogyaPulse — AI-Powered Rural Healthcare Triage System</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/assets/css/style.css">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%230d9488'/><path d='M40 30 L50 50 L40 70 M60 30 L50 50 L60 70' stroke='white' stroke-width='4' fill='none' stroke-linecap='round'/></svg>">
+
+    <!-- Chart.js for Analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="navbar-container">
+            <a href="#" class="navbar-brand" onclick="renderPage('home'); return false;">
+                <div class="brand-logo">
+                    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="50" cy="50" r="45" fill="var(--primary)" />
+                        <path d="M25 50 H38 L45 30 L55 70 L62 40 L68 50 H75" stroke="white" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <span class="brand-name">Arogya<span class="brand-accent">Pulse</span></span>
+                    <span class="brand-tagline">AI Rural Triage</span>
+                </div>
+            </a>
+
+            <div class="nav-tabs">
+                <button class="nav-btn active" data-page="home">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-label" data-i18n="overview">Overview</span>
+                </button>
+                <button class="nav-btn" data-page="intake">
+                    <span class="nav-icon">📋</span>
+                    <span class="nav-label" data-i18n="intake">ASHA Intake</span>
+                </button>
+                <button class="nav-btn" data-page="doctor">
+                    <span class="nav-icon">👨‍⚕️</span>
+                    <span class="nav-label" data-i18n="doctor">Doctor Dashboard</span>
+                </button>
+                <button class="nav-btn" data-page="bot">
+                    <span class="nav-icon">🤖</span>
+                    <span class="nav-label" data-i18n="bot">ASHA Bot AI</span>
+                </button>
+                <button class="nav-btn" data-page="villages">
+                    <span class="nav-icon">🗺️</span>
+                    <span class="nav-label" data-i18n="villages">Village Clusters</span>
+                </button>
+                <button class="nav-btn" data-page="algorithm">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-label" data-i18n="engine">Triage Engine</span>
+                </button>
+            </div>
+
+            <div class="nav-actions">
+                <a href="/openapi/v1.json" target="_blank" class="swagger-link-btn" title="OpenAPI / Swagger Specs">
+                    <span>⚡ API Specs</span>
+                </a>
+                <button class="language-btn" id="langToggleBtn" onclick="toggleLanguage()">
+                    <span class="lang-flag">🇮🇳</span>
+                    <span class="lang-text">हिंदी (HI)</span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Container -->
+    <main class="app-main"></main>
+
+    <!-- Global Modal Overlay -->
+    <div id="appModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Patient Information</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <!-- Notification Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- App Footer -->
+    <footer class="app-footer">
+        <div class="footer-container">
+            <div class="footer-status">
+                <span class="status-pulse-dot"></span>
+                <strong>ArogyaPulse Rural Healthcare Triage Engine v2.0</strong>
+            </div>
+            <p class="footer-desc">Empowering frontline ASHA workers & district physicians with instant WHO/NHM vitals triage & clinical intelligence.</p>
+            <div class="footer-links">
+                <a href="#" onclick="renderPage('home'); return false;">System Overview</a> •
+                <a href="#" onclick="renderPage('algorithm'); return false;">Clinical Stratification Standard</a> •
+                <a href="/openapi/v1.json" target="_blank">OpenAPI v1 Schema</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- App Script -->
+    <script src="/assets/js/app.js"></script>
+</body>
+
+</html>
