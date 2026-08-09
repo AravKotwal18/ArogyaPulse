@@ -1,6 +1,5 @@
 using ArogyaPulse.Api.Interfaces;
 using ArogyaPulse.Api.DTOs;
-
 namespace ArogyaPulse.Api.Services
 {
     public class AiChatService : IAiChatService
@@ -9,12 +8,10 @@ namespace ArogyaPulse.Api.Services
         {
             var queryLower = request.Query.ToLower();
             bool isHindi = request.Language.ToLower() == "hi" || ContainsHindi(request.Query);
-
             var alerts = new List<string>();
             var actions = new List<string>();
             string responseText = "";
             string severity = "Info";
-
             if (queryLower.Contains("spo2") || queryLower.Contains("oxygen") || queryLower.Contains("hypoxia") || queryLower.Contains("ऑक्सीजन") || queryLower.Contains("सांस"))
             {
                 if (queryLower.Contains("< 90") || queryLower.Contains("90") || queryLower.Contains("कम"))
@@ -141,7 +138,6 @@ namespace ArogyaPulse.Api.Services
                     actions.Add("Sample question: 'Pre-eclampsia warning signs and BP thresholds'");
                 }
             }
-
             return Task.FromResult(new ChatResponseDto
             {
                 Response = responseText,
@@ -151,7 +147,6 @@ namespace ArogyaPulse.Api.Services
                 Timestamp = DateTime.UtcNow
             });
         }
-
         private bool ContainsHindi(string text)
         {
             return text.Any(c => c >= 0x0900 && c <= 0x097F);
