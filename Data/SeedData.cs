@@ -1,5 +1,4 @@
 using ArogyaPulse.Api.Models;
-
 namespace ArogyaPulse.Api.Data
 {
     public static class SeedData
@@ -10,13 +9,14 @@ namespace ArogyaPulse.Api.Data
             {
                 return;
             }
-
             var patients = new List<Patient>
             {
                 new Patient
                 {
                     Name = "Priya Sharma",
                     Age = 28,
+                    Gender = "Female",
+                    BloodGroup = "B+",
                     Village = "Nandpur",
                     Bp = "165/105",
                     SpO2 = 88,
@@ -24,7 +24,7 @@ namespace ArogyaPulse.Api.Data
                     Glucose = 210,
                     Symptoms = "Severe headache, facial edema, visual disturbance",
                     IsPregnant = true,
-                    RiskScore = 140, // BP crisis (40) + Pre-eclampsia (35) + Hypoxia (35) + Glucose (30)
+                    RiskScore = 140,
                     RiskLevel = "High",
                     Status = "Referred to CHC",
                     DoctorNotes = "Urgent obstetric triage required. Transferred via ambulance.",
@@ -34,6 +34,8 @@ namespace ArogyaPulse.Api.Data
                 {
                     Name = "Sunita Verma",
                     Age = 24,
+                    Gender = "Female",
+                    BloodGroup = "O+",
                     Village = "Devpur",
                     Bp = "142/94",
                     SpO2 = 91,
@@ -41,7 +43,7 @@ namespace ArogyaPulse.Api.Data
                     Glucose = 130,
                     Symptoms = "Swelling in ankles, persistent headache during 3rd trimester",
                     IsPregnant = true,
-                    RiskScore = 70, // Stage 1 BP (20) + Pre-eclampsia (35) + Moderate Hypoxemia (15)
+                    RiskScore = 70,
                     RiskLevel = "High",
                     Status = "Pending",
                     DoctorNotes = "High pre-eclampsia suspicion. Scheduled for immediate doctor evaluation.",
@@ -51,6 +53,8 @@ namespace ArogyaPulse.Api.Data
                 {
                     Name = "Rajesh Kumar",
                     Age = 45,
+                    Gender = "Male",
+                    BloodGroup = "A+",
                     Village = "Laxmipur",
                     Bp = "145/92",
                     SpO2 = 92,
@@ -58,7 +62,7 @@ namespace ArogyaPulse.Api.Data
                     Glucose = 180,
                     Symptoms = "Chest discomfort, shortness of breath on exertion",
                     IsPregnant = false,
-                    RiskScore = 35, // Stage 1 BP (20) + Moderate Hypoxemia (15)
+                    RiskScore = 35,
                     RiskLevel = "Medium",
                     Status = "Under Observation",
                     DoctorNotes = "ECG recommended. Priority review within 24h.",
@@ -68,6 +72,8 @@ namespace ArogyaPulse.Api.Data
                 {
                     Name = "Ramesh Patel",
                     Age = 58,
+                    Gender = "Male",
+                    BloodGroup = "O-",
                     Village = "Devpur",
                     Bp = "162/102",
                     SpO2 = 94,
@@ -75,7 +81,7 @@ namespace ArogyaPulse.Api.Data
                     Glucose = 240,
                     Symptoms = "Dizziness, extreme thirst, blurred vision",
                     IsPregnant = false,
-                    RiskScore = 85, // Hypertensive crisis (40) + Glucose (30) + Moderate Hypoxemia (15)
+                    RiskScore = 85,
                     RiskLevel = "High",
                     Status = "Pending",
                     DoctorNotes = "Diabetic hypertensive urgency.",
@@ -85,6 +91,8 @@ namespace ArogyaPulse.Api.Data
                 {
                     Name = "Anjali Devi",
                     Age = 32,
+                    Gender = "Female",
+                    BloodGroup = "AB+",
                     Village = "Rampur",
                     Bp = "135/88",
                     SpO2 = 95,
@@ -102,6 +110,8 @@ namespace ArogyaPulse.Api.Data
                 {
                     Name = "Vikram Singh",
                     Age = 50,
+                    Gender = "Male",
+                    BloodGroup = "B-",
                     Village = "Nandpur",
                     Bp = "130/85",
                     SpO2 = 96,
@@ -116,7 +126,6 @@ namespace ArogyaPulse.Api.Data
                     Timestamp = DateTime.UtcNow.AddHours(-6)
                 }
             };
-
             context.Patients.AddRange(patients);
             context.SaveChanges();
         }
