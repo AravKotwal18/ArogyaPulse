@@ -1,7 +1,7 @@
-using Microsoft.AspNetCore.Mvc;
-using ArogyaPulse.Api.Interfaces;
-using ArogyaPulse.Api.DTOs;
 using AutoMapper;
+using ArogyaPulse.Api.DTOs;
+using ArogyaPulse.Api.Interfaces;
+using Microsoft.AspNetCore.Mvc;
 
 namespace ArogyaPulse.Api.Controllers
 {
@@ -12,45 +12,80 @@ namespace ArogyaPulse.Api.Controllers
         private readonly IPatientRepository _repository;
         private readonly IMapper _mapper;
 
-        public TriageController(IPatientRepository repository, IMapper mapper)
+        public TriageController(
+            IPatientRepository repository,
+            IMapper mapper)
         {
             _repository = repository;
             _mapper = mapper;
         }
 
         [HttpGet("triage-queue")]
-        public async Task<IActionResult> GetQueue([FromQuery] string? village, [FromQuery] string? status)
+        public async Task<IActionResult> GetQueue(
+            [FromQuery] string? village,
+            [FromQuery] string? status)
         {
-            var patients = await _repository.GetAllAsync(village, null, null);
+            var patients =
+                await _repository.GetAllAsync(
+                    village,
+                    null,
+                    null);
 
             if (!string.IsNullOrWhiteSpace(status))
             {
-                patients = patients.Where(p => p.Status.ToLower() == status.ToLower()).ToList();
+                patients = patients
+                    .Where(x =>
+                        string.Equals(
+                            x.Status,
+                            status,
+                            StringComparison.OrdinalIgnoreCase))
+                    .ToList();
             }
 
-            var riskOrder = new Dictionary<string, int> { { "High", 3 }, { "Medium", 2 }, { "Low", 1 } };
+            var riskOrder =
+                new Dictionary<string, int>(
+                    StringComparer.OrdinalIgnoreCase)
+                {
+                    ["High"] = 3,
+                    ["Medium"] = 2,
+                    ["Low"] = 1
+                };
 
-            // Map through AutoMapper — no inline name-based fabrication
-            var dtos = _mapper.Map<List<PatientResponseDto>>(patients);
-
-            var sorted = dtos
-                .OrderByDescending(p => riskOrder.GetValueOrDefault(p.RiskLevel, 0))
-                .ThenByDescending(p => p.RiskScore)
-                .ThenByDescending(p => p.Timestamp)
-                .ToList();
+            var data =
+                _mapper
+                    .Map<List<PatientResponseDto>>(patients)
+                    .OrderByDescending(x =>
+                        riskOrder.GetValueOrDefault(
+                            x.RiskLevel,
+                            0))
+                    .ThenByDescending(x => x.RiskScore)
+                    .ThenByDescending(x => x.Timestamp)
+                    .ToList();
 
             return Ok(new
             {
                 success = true,
-                data = sorted,
+
+                data,
+
                 stats = new
                 {
-                    total = patients.Count,
-                    high = patients.Count(p => p.RiskLevel == "High"),
-                    medium = patients.Count(p => p.RiskLevel == "Medium"),
-                    low = patients.Count(p => p.RiskLevel == "Low"),
-                    pending = patients.Count(p => p.Status == "Pending"),
-                    referred = patients.Count(p => p.Status == "Referred to CHC")
+                    total = data.Count,
+
+                    high = data.Count(
+                        x => x.RiskLevel == "High"),
+
+                    medium = data.Count(
+                        x => x.RiskLevel == "Medium"),
+
+                    low = data.Count(
+                        x => x.RiskLevel == "Low"),
+
+                    pending = data.Count(
+                        x => x.Status == "Pending"),
+
+                    referred = data.Count(
+                        x => x.Status == "Referred to CHC")
                 }
             });
         }
@@ -58,54 +93,85 @@ namespace ArogyaPulse.Api.Controllers
         [HttpGet("stats")]
         public async Task<IActionResult> GetStats()
         {
-            var patients = await _repository.GetAllAsync();
-            var villageStats = await _repository.GetVillageStatsAsync();
+            var patients =
+                await _repository.GetAllAsync();
 
-            var stats = new
+            var villages =
+                await _repository.GetVillageStatsAsync();
+
+            var total = patients.Count;
+
+            var high =
+                patients.Count(x => x.RiskLevel == "High");
+
+            var medium =
+                patients.Count(x => x.RiskLevel == "Medium");
+
+            var low =
+                patients.Count(x => x.RiskLevel == "Low");
+
+            var average =
+                total == 0
+                    ? 0
+                    : Math.Round(
+                        patients.Average(x => x.RiskScore),
+                        1);
+
+            return Ok(new
             {
-                totalPatients = patients.Count,
-                highRisk = patients.Count(p => p.RiskLevel == "High"),
-                mediumRisk = patients.Count(p => p.RiskLevel == "Medium"),
-                lowRisk = patients.Count(p => p.RiskLevel == "Low"),
-                connectedVillages = villageStats.Count,
-                averageRiskScore = patients.Count > 0
-                    ? Math.Round(patients.Average(p => p.RiskScore), 1)
-                    : 0,
-                highRiskPercentage = patients.Count > 0
-                    ? Math.Round((double)patients.Count(p => p.RiskLevel == "High") / patients.Count * 100, 1)
-                    : 0,
-                pendingReview = patients.Count(p => p.Status == "Pending"),
-                referred = patients.Count(p => p.Status == "Referred to CHC"),
-                discharged = patients.Count(p => p.Status == "Discharged"),
-                villageBreakdown = villageStats
-            };
+                success = true,
 
-            return Ok(new { success = true, data = stats });
-        }
-
-        [HttpGet("stats/trends")]
-        public async Task<IActionResult> GetTrends()
-        {
-            var patients = await _repository.GetAllAsync();
-            var now = DateTime.UtcNow.Date;
-
-            var trends = new List<DailyTrendDto>();
-            for (int i = 6; i >= 0; i--)
-            {
-                var targetDate = now.AddDays(-i);
-                var dayPatients = patients.Where(p => p.Timestamp.Date == targetDate).ToList();
-
-                trends.Add(new DailyTrendDto
+                data = new
                 {
-                    Date = targetDate.ToString("yyyy-MM-dd"),
-                    Screenings = dayPatients.Count,
-                    HighRiskCount = dayPatients.Count(p => p.RiskLevel == "High"),
-                    MediumRiskCount = dayPatients.Count(p => p.RiskLevel == "Medium"),
-                    LowRiskCount = dayPatients.Count(p => p.RiskLevel == "Low")
-                });
-            }
+                    totalPatients = total,
 
-            return Ok(new { success = true, data = trends });
+                    highRisk = high,
+
+                    mediumRisk = medium,
+
+                    lowRisk = low,
+
+                    averageRiskScore = average,
+
+                    highRiskPercentage =
+                        total == 0
+                            ? 0
+                            : Math.Round(
+                                high * 100.0 / total,
+                                1),
+
+                    mediumRiskPercentage =
+                        total == 0
+                            ? 0
+                            : Math.Round(
+                                medium * 100.0 / total,
+                                1),
+
+                    lowRiskPercentage =
+                        total == 0
+                            ? 0
+                            : Math.Round(
+                                low * 100.0 / total,
+                                1),
+
+                    pendingReview =
+                        patients.Count(
+                            x => x.Status == "Pending"),
+
+                    referred =
+                        patients.Count(
+                            x => x.Status == "Referred to CHC"),
+
+                    discharged =
+                        patients.Count(
+                            x => x.Status == "Discharged"),
+
+                    connectedVillages =
+                        villages.Count,
+
+                    villageBreakdown = villages
+                }
+            });
         }
     }
 }

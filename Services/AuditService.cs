@@ -1,24 +1,26 @@
+using Microsoft.EntityFrameworkCore;
 using ArogyaPulse.Api.Data;
 using ArogyaPulse.Api.Interfaces;
 using ArogyaPulse.Api.Models;
-using Microsoft.EntityFrameworkCore;
 
 namespace ArogyaPulse.Api.Services
 {
     public class AuditService : IAuditService
     {
         private readonly AppDbContext _context;
-        private readonly ILogger<AuditService> _logger;
 
-        public AuditService(AppDbContext context, ILogger<AuditService> logger)
+        public AuditService(AppDbContext context)
         {
             _context = context;
-            _logger = logger;
         }
 
-        public async Task LogAsync(int? patientId, string action, string performedBy, string details)
+        public async Task LogAsync(
+            int patientId,
+            string action,
+            string performedBy,
+            string details)
         {
-            var entry = new AuditLog
+            var auditLog = new AuditLog
             {
                 PatientId = patientId,
                 Action = action,
@@ -27,15 +29,13 @@ namespace ArogyaPulse.Api.Services
                 Timestamp = DateTime.UtcNow
             };
 
-            _context.AuditLogs.Add(entry);
-            await _context.SaveChangesAsync();
+            _context.AuditLogs.Add(auditLog);
 
-            _logger.LogInformation(
-                "[Audit] {Action} on Patient #{PatientId} by {PerformedBy}: {Details}",
-                action, patientId, performedBy, details);
+            await _context.SaveChangesAsync();
         }
 
-        public async Task<List<AuditLog>> GetByPatientIdAsync(int patientId)
+        public async Task<List<AuditLog>> GetByPatientIdAsync(
+            int patientId)
         {
             return await _context.AuditLogs
                 .AsNoTracking()
@@ -44,12 +44,15 @@ namespace ArogyaPulse.Api.Services
                 .ToListAsync();
         }
 
-        public async Task<List<AuditLog>> GetRecentAsync(int count = 50)
+        public async Task<List<AuditLog>> GetRecentAsync(
+            int limit = 100)
         {
+            limit = Math.Clamp(limit, 1, 500);
+
             return await _context.AuditLogs
                 .AsNoTracking()
                 .OrderByDescending(a => a.Timestamp)
-                .Take(count)
+                .Take(limit)
                 .ToListAsync();
         }
     }

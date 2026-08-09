@@ -1,5 +1,5 @@
-using Microsoft.AspNetCore.Mvc;
 using ArogyaPulse.Api.Interfaces;
+using Microsoft.AspNetCore.Mvc;
 
 namespace ArogyaPulse.Api.Controllers
 {
@@ -9,18 +9,20 @@ namespace ArogyaPulse.Api.Controllers
     {
         private readonly IAuditService _auditService;
 
-        public AuditController(IAuditService auditService)
+        public AuditController(
+            IAuditService auditService)
         {
             _auditService = auditService;
         }
 
-        /// <summary>
-        /// Get audit trail for a specific patient.
-        /// </summary>
-        [HttpGet("{patientId}")]
-        public async Task<IActionResult> GetByPatient(int patientId)
+        [HttpGet("{patientId:int}")]
+        public async Task<IActionResult> GetPatientAudit(
+            int patientId)
         {
-            var logs = await _auditService.GetByPatientIdAsync(patientId);
+            var logs =
+                await _auditService
+                    .GetByPatientIdAsync(patientId);
+
             return Ok(new
             {
                 success = true,
@@ -30,14 +32,16 @@ namespace ArogyaPulse.Api.Controllers
             });
         }
 
-        /// <summary>
-        /// Get recent audit events (admin view).
-        /// </summary>
         [HttpGet]
-        public async Task<IActionResult> GetRecent([FromQuery] int count = 50)
+        public async Task<IActionResult> GetRecentAudit(
+            [FromQuery] int count = 50)
         {
-            var clamped = Math.Clamp(count, 1, 200);
-            var logs = await _auditService.GetRecentAsync(clamped);
+            count = Math.Clamp(count, 1, 200);
+
+            var logs =
+                await _auditService
+                    .GetRecentAsync(count);
+
             return Ok(new
             {
                 success = true,

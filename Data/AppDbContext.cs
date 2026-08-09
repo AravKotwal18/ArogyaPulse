@@ -1,42 +1,75 @@
-using Microsoft.EntityFrameworkCore;
 using ArogyaPulse.Api.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace ArogyaPulse.Api.Data
 {
     public class AppDbContext : DbContext
     {
-        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
-        { }
-
-        public DbSet<Patient> Patients { get; set; }
-        public DbSet<AuditLog> AuditLogs { get; set; }
-        public DbSet<SyncLog> SyncLogs { get; set; }
-
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        public AppDbContext(
+            DbContextOptions<AppDbContext> options)
+            : base(options)
         {
+        }
+
+        public DbSet<Patient> Patients => Set<Patient>();
+
+        public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
+        public DbSet<SyncLog> SyncLogs => Set<SyncLog>();
+
+        protected override void OnModelCreating(
+            ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
             modelBuilder.Entity<Patient>(entity =>
             {
-                entity.HasKey(p => p.Id);
-                entity.Property(p => p.Name).IsRequired();
-                entity.Property(p => p.Village).IsRequired();
-                entity.Property(p => p.Bp).IsRequired();
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.Name)
+                    .IsRequired()
+                    .HasMaxLength(100);
+
+                entity.Property(x => x.Village)
+                    .IsRequired()
+                    .HasMaxLength(100);
+
+                entity.Property(x => x.Bp)
+                    .IsRequired()
+                    .HasMaxLength(20);
+
+                entity.HasIndex(x => x.Village);
+
+                entity.HasIndex(x => x.RiskLevel);
+
+                entity.HasIndex(x => x.Timestamp);
             });
 
             modelBuilder.Entity<AuditLog>(entity =>
             {
-                entity.HasKey(a => a.Id);
-                entity.HasIndex(a => a.PatientId);
-                entity.HasIndex(a => a.Timestamp);
+                entity.HasKey(x => x.Id);
+
+                entity.HasIndex(x => x.PatientId);
+
+                entity.HasIndex(x => x.Timestamp);
             });
 
             modelBuilder.Entity<SyncLog>(entity =>
             {
-                entity.HasKey(s => s.Id);
-                entity.HasIndex(s => s.DeviceId);
-                entity.HasIndex(s => s.Status);
-            });
+                entity.HasKey(x => x.Id);
 
-            base.OnModelCreating(modelBuilder);
+                entity.HasIndex(x =>
+                    new
+                    {
+                        x.DeviceId,
+                        x.LocalRecordId
+                    })
+                    .IsUnique();
+
+                entity.HasIndex(x => x.Status);
+
+                entity.HasIndex(x => x.CreatedAt);
+            });
         }
     }
 }

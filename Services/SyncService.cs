@@ -14,12 +14,6 @@ namespace ArogyaPulse.Api.Services
         private readonly IAuditService _auditService;
         private readonly ILogger<SyncService> _logger;
 
-        /// <summary>
-        /// Records captured within this window (minutes) for the same patient
-        /// name + village are treated as potential duplicates.
-        /// </summary>
-        private const int DuplicateWindowMinutes = 30;
-
         public SyncService(
             AppDbContext context,
             ITriageService triageService,
@@ -32,138 +26,260 @@ namespace ArogyaPulse.Api.Services
             _logger = logger;
         }
 
-        public async Task<SyncResponseDto> ProcessBatchAsync(SyncRequestDto request)
+        public async Task<SyncResponseDto> ProcessBatchAsync(
+            SyncRequestDto request)
         {
-            var response = new SyncResponseDto
+            var result = new SyncResponseDto
             {
                 TotalReceived = request.Records.Count
             };
 
             foreach (var record in request.Records)
             {
-                var localId = string.IsNullOrWhiteSpace(record.LocalRecordId) ? Guid.NewGuid().ToString() : record.LocalRecordId;
-                var result = new SyncRecordResultDto
-                {
-                    LocalRecordId = localId,
-                    PatientName = record.Name
-                };
-
                 try
                 {
-                    // 1. Idempotency Check: Already synced by LocalRecordId UUID
-                    var existingByLocalId = await _context.Patients.FirstOrDefaultAsync(p => p.LocalRecordId == localId);
-                    if (existingByLocalId != null)
+                    if (string.IsNullOrWhiteSpace(
+                            record.LocalRecordId))
                     {
-                        result.Status = "Synced";
-                        result.PatientId = existingByLocalId.Id;
-                        result.Message = $"Already synced (Idempotent UUID match #{existingByLocalId.Id}).";
-                        response.Synced++;
-                        response.Results.Add(result);
+                        result.Errors++;
+
+                        result.Results.Add(
+                            new SyncRecordResultDto
+                            {
+                                Status = "Error",
+                                PatientName = record.Name,
+                                Message = "LocalRecordId is required."
+                            });
+
                         continue;
                     }
 
-                    // 2. Duplicate/Conflict Check: Name + Village match within time window
-                    var windowStart = record.CapturedAt.AddMinutes(-DuplicateWindowMinutes);
-                    var windowEnd = record.CapturedAt.AddMinutes(DuplicateWindowMinutes);
+                    var existingSync =
+                        await _context.SyncLogs
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(x =>
+                                x.DeviceId ==
+                                    request.DeviceId &&
+                                x.LocalRecordId ==
+                                    record.LocalRecordId);
 
-                    var isDuplicate = await _context.Patients.AnyAsync(p =>
-                        p.Name.ToLower() == record.Name.ToLower() &&
-                        p.Village.ToLower() == record.Village.ToLower() &&
-                        p.Timestamp >= windowStart &&
-                        p.Timestamp <= windowEnd);
-
-                    if (isDuplicate)
+                    if (existingSync != null)
                     {
-                        result.Status = "Conflict";
-                        result.Message = $"Duplicate conflict: patient '{record.Name}' in '{record.Village}' captured within {DuplicateWindowMinutes}-minute window.";
-                        response.Conflicts++;
-
-                        _context.SyncLogs.Add(new SyncLog
+                        if (existingSync.Status == "Synced")
                         {
-                            DeviceId = request.DeviceId,
-                            Action = "SyncConflict",
-                            LocalRecordId = localId,
-                            Payload = JsonSerializer.Serialize(record),
-                            Status = "Conflict",
-                            CreatedAt = DateTime.UtcNow
-                        });
+                            result.AlreadySynced++;
+
+                            result.Results.Add(
+                                new SyncRecordResultDto
+                                {
+                                    LocalRecordId =
+                                        record.LocalRecordId,
+
+                                    PatientName =
+                                        record.Name,
+
+                                    PatientId =
+                                        existingSync.PatientId,
+
+                                    Status =
+                                        "AlreadySynced",
+
+                                    Message =
+                                        "Record was already synchronized."
+                                });
+
+                            continue;
+                        }
+
+                        if (existingSync.Status == "Conflict")
+                        {
+                            result.Conflicts++;
+
+                            result.Results.Add(
+                                new SyncRecordResultDto
+                                {
+                                    LocalRecordId =
+                                        record.LocalRecordId,
+
+                                    PatientName =
+                                        record.Name,
+
+                                    Status = "Conflict",
+
+                                    Message =
+                                        "This record previously resulted in a conflict."
+                                });
+
+                            continue;
+                        }
                     }
-                    else
+
+                    var patient = new Patient
                     {
-                        // 3. Create new patient from offline record
-                        var gender = string.IsNullOrWhiteSpace(record.Gender) ? "Unknown" : record.Gender;
-                        var patient = new Patient
+                        Name = record.Name.Trim(),
+
+                        Age = record.Age,
+
+                        Gender =
+                            string.IsNullOrWhiteSpace(record.Gender)
+                                ? "Unknown"
+                                : record.Gender.Trim(),
+
+                        BloodGroup =
+                            string.IsNullOrWhiteSpace(record.BloodGroup)
+                                ? "Unknown"
+                                : record.BloodGroup.Trim(),
+
+                        Village = record.Village.Trim(),
+
+                        Bp = record.Vitals.Bp.Trim(),
+
+                        SpO2 = record.Vitals.SpO2,
+
+                        Temp = record.Vitals.Temp,
+
+                        Glucose = record.Vitals.Glucose,
+
+                        Symptoms =
+                            record.Symptoms?.Trim() ?? string.Empty,
+
+                        IsPregnant =
+                            record.IsPregnant,
+
+                        Status = "Pending",
+
+                        Timestamp = record.CapturedAt
+                    };
+
+                    var triage =
+                        _triageService.EvaluateTriage(
+                            patient.Bp,
+                            patient.SpO2,
+                            patient.Temp,
+                            patient.Glucose,
+                            patient.IsPregnant);
+
+                    patient.RiskScore =
+                        triage.TotalScore;
+
+                    patient.RiskLevel =
+                        triage.RiskLevel;
+
+                    _context.Patients.Add(patient);
+
+                    await _context.SaveChangesAsync();
+
+                    var syncLog = new SyncLog
+                    {
+                        DeviceId = request.DeviceId,
+
+                        LocalRecordId =
+                            record.LocalRecordId,
+
+                        Action = "SyncCreated",
+
+                        Payload =
+                            JsonSerializer.Serialize(record),
+
+                        Status = "Synced",
+
+                        PatientId = patient.Id,
+
+                        CreatedAt = DateTime.UtcNow,
+
+                        SyncedAt = DateTime.UtcNow
+                    };
+
+                    _context.SyncLogs.Add(syncLog);
+
+                    await _context.SaveChangesAsync();
+
+                    await _auditService.LogAsync(
+                        patient.Id,
+                        "OfflineSync",
+                        $"Device:{request.DeviceId}",
+                        $"Offline record {record.LocalRecordId} synchronized. Risk={triage.RiskLevel}.");
+
+                    result.Synced++;
+
+                    result.Results.Add(
+                        new SyncRecordResultDto
                         {
-                            Name = record.Name,
-                            Age = record.Age,
-                            Gender = gender,
-                            BloodGroup = string.IsNullOrWhiteSpace(record.BloodGroup) ? "Unknown" : record.BloodGroup,
-                            Village = record.Village,
-                            Bp = record.Vitals.Bp,
-                            SpO2 = record.Vitals.SpO2,
-                            Temp = record.Vitals.Temp,
-                            Glucose = record.Vitals.Glucose,
-                            Symptoms = record.Symptoms,
-                            IsPregnant = gender == "Female" ? record.IsPregnant : false,
-                            Status = "Pending",
-                            LocalRecordId = localId,
-                            Timestamp = record.CapturedAt
-                        };
+                            LocalRecordId =
+                                record.LocalRecordId,
 
-                        // Run triage
-                        var triage = _triageService.EvaluateTriage(
-                            patient.Bp, patient.SpO2, patient.Temp, patient.Glucose, patient.IsPregnant);
-                        patient.RiskScore = triage.TotalScore;
-                        patient.RiskLevel = triage.RiskLevel;
+                            PatientName =
+                                patient.Name,
 
-                        _context.Patients.Add(patient);
-                        await _context.SaveChangesAsync();
+                            PatientId =
+                                patient.Id,
 
-                        result.Status = "Synced";
-                        result.PatientId = patient.Id;
-                        result.Message = $"Successfully synced offline record. Risk: {triage.RiskLevel} ({triage.TotalScore}/100)";
-                        response.Synced++;
-
-                        // Log sync
-                        _context.SyncLogs.Add(new SyncLog
-                        {
-                            DeviceId = request.DeviceId,
-                            Action = "SyncCreated",
-                            LocalRecordId = localId,
-                            Payload = JsonSerializer.Serialize(record),
                             Status = "Synced",
-                            PatientId = patient.Id,
-                            CreatedAt = DateTime.UtcNow,
-                            SyncedAt = DateTime.UtcNow
-                        });
 
-                        await _auditService.LogAsync(
-                            patient.Id,
-                            "OfflineSync",
-                            $"Device:{request.DeviceId}",
-                            $"Offline record synced [UUID: {localId}]. Risk: {triage.RiskLevel}");
-                    }
+                            Message =
+                                $"Successfully synchronized. Risk={triage.RiskLevel}."
+                        });
+                }
+                catch (DbUpdateException ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Database error during sync for {LocalRecordId}",
+                        record.LocalRecordId);
+
+                    result.Errors++;
+
+                    result.Results.Add(
+                        new SyncRecordResultDto
+                        {
+                            LocalRecordId =
+                                record.LocalRecordId,
+
+                            PatientName =
+                                record.Name,
+
+                            Status = "Error",
+
+                            Message =
+                                "The record could not be synchronized."
+                        });
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to sync record for {Name} [UUID: {LocalId}]", record.Name, localId);
-                    result.Status = "Error";
-                    result.Message = $"Sync failed: {ex.Message}";
-                }
+                    _logger.LogError(
+                        ex,
+                        "Unexpected sync error.");
 
-                response.Results.Add(result);
+                    result.Errors++;
+
+                    result.Results.Add(
+                        new SyncRecordResultDto
+                        {
+                            LocalRecordId =
+                                record.LocalRecordId,
+
+                            PatientName =
+                                record.Name,
+
+                            Status = "Error",
+
+                            Message =
+                                "Unexpected synchronization error."
+                        });
+                }
             }
 
-            await _context.SaveChangesAsync();
-            return response;
+            return result;
         }
 
-        public async Task<List<SyncLog>> GetDeviceHistoryAsync(string deviceId)
+        public async Task<List<SyncLog>>
+            GetDeviceHistoryAsync(
+                string deviceId)
         {
             return await _context.SyncLogs
                 .AsNoTracking()
-                .Where(s => s.DeviceId == deviceId)
-                .OrderByDescending(s => s.CreatedAt)
+                .Where(x => x.DeviceId == deviceId)
+                .OrderByDescending(x => x.CreatedAt)
                 .Take(100)
                 .ToListAsync();
         }

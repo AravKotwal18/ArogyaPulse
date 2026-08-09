@@ -4,6 +4,6 @@ namespace ArogyaPulse.Api.Interfaces
 {
     public interface IAiChatService
     {
-        Task<ChatResponseDto> GetGuidanceAsync(ChatRequestDto request);
+        Task<ChatResponseDto> GetGuidanceAsync(ChatDto request);
     }
 }

@@ -16,9 +16,9 @@ namespace ArogyaPulse.Api.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> Ask([FromBody] ChatRequestDto request)
+        public async Task<IActionResult> Ask([FromBody] ChatDto request)
         {
-            string queryText = !string.IsNullOrWhiteSpace(request.Message) ? request.Message : request.Query;
+            string queryText = (!string.IsNullOrWhiteSpace(request.Message) ? request.Message : request.Query) ?? string.Empty;
             if (string.IsNullOrWhiteSpace(queryText))
             {
                 return BadRequest(new { success = false, message = "Query or message cannot be empty." });

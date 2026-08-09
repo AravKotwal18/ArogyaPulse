@@ -1063,7 +1063,6 @@ function renderBot() {
 
         <!-- Multilingual Suggestion Chips -->
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem;">
-            <button class="btn btn-outline btn-sm" onclick="sendPromptChip('Patient ku moochu kashtama irukku, oxygen 88')">🇮🇳 Tamil: Mooschu Kashtama (SpO2 88%)</button>
             <button class="btn btn-outline btn-sm" onclick="sendPromptChip('मरीज का बीपी 160/100 है, सांस फूल रही है')">🇮🇳 Hindi: BP 160/100 High Risk</button>
             <button class="btn btn-outline btn-sm" onclick="sendPromptChip('What to do if SpO2 is below 90%?')">${t('chipHypoxia')}</button>
             <button class="btn btn-outline btn-sm" onclick="sendPromptChip('Pre-eclampsia warning signs in pregnancy')">${t('chipPreeclampsia')}</button>
@@ -1072,7 +1071,7 @@ function renderBot() {
         <div id="chatBox" style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; height: 420px; overflow-y: auto; margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
             <div style="background: white; border: 1px solid var(--border-color); padding: 1rem; border-radius: var(--radius-md); max-width: 85%;">
                 <strong>🤖 ASHA Bot AI:</strong>
-                <p style="margin-top: 0.25rem;">Hello! I am your AI Clinical Assistant. Type or paste ASHA observations in <strong>English, Hindi, Tamil, or Hinglish</strong> (e.g. <em>"Patient ku moochu kashtama irukku, oxygen 88"</em>). I will extract vitals, symptoms, and run automated triage scoring.</p>
+                <p style="margin-top: 0.25rem;">Hello! I am your AI Clinical Assistant. Type or paste ASHA observations in <strong>English or Hindi</strong> (e.g. <em>"मरीज का बीपी 160/100 है, सांस फूल रही है"</em>). I will extract vitals, symptoms, and run automated triage scoring.</p>
             </div>
         </div>
 

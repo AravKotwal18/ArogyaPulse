@@ -2,40 +2,67 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ArogyaPulse.Api.DTOs
 {
-    public class ChatRequestDto
+    public class ChatDto
     {
-        public string Query { get; set; } = string.Empty;
+        [MaxLength(
+            1000,
+            ErrorMessage = "Message cannot exceed 1000 characters")]
+        public string? Message { get; set; }
+
+        [MaxLength(
+            1000,
+            ErrorMessage = "Query cannot exceed 1000 characters")]
+        public string? Query { get; set; }
 
         /// <summary>
-        /// Alias for Query to support both 'message' and 'query' JSON fields.
-        /// </summary>
-        public string Message
-        {
-            get => string.IsNullOrWhiteSpace(_message) ? Query : _message;
-            set => _message = value;
-        }
-        private string _message = string.Empty;
-
-        public string Language { get; set; } = "auto";
-
-        /// <summary>
-        /// Optional patient ID for contextual queries.
+        /// Optional patient ID used to provide
+        /// screening context to the AI assistant.
         /// </summary>
         public int? PatientId { get; set; }
     }
 
     public class ChatResponseDto
     {
+        /// <summary>
+        /// Main assistant response shown to the ASHA worker.
+        /// </summary>
         public string Response { get; set; } = string.Empty;
+
+        /// <summary>
+        /// AI-generated clinical alerts that should
+        /// be verified by a healthcare professional.
+        /// </summary>
         public List<string> ClinicalAlerts { get; set; } = new();
+
+        /// <summary>
+        /// Additional information the ASHA worker
+        /// should collect.
+        /// </summary>
         public List<string> ActionSteps { get; set; } = new();
-        public string Severity { get; set; } = "Info"; // Info, Warning, Critical
-        public string LanguageDetected { get; set; } = "English"; // English, Hindi, Tamil, Hinglish
+
+        /// <summary>
+        /// Informational severity of the AI response.
+        /// This does NOT replace the application's
+        /// deterministic triage risk level.
+        /// </summary>
+        public string Severity { get; set; } = "Info";
+
+        /// <summary>
+        /// Patient context used by the AI, when supplied.
+        /// </summary>
         public string? PatientContext { get; set; }
-        public VitalsDto? ExtractedVitals { get; set; }
-        public List<string> ExtractedSymptoms { get; set; } = new();
-        public TriageResultDto? TriageEvaluation { get; set; }
-        public string Disclaimer { get; set; } = "This assistant provides screening support and does not diagnose disease.";
+
+        /// <summary>
+        /// Mandatory safety disclaimer.
+        /// </summary>
+        public string Disclaimer { get; set; } =
+            "This assistant provides screening support only. " +
+            "It does not diagnose disease, prescribe treatment, " +
+            "or replace a qualified healthcare professional.";
+
+        /// <summary>
+        /// Time at which the AI response was generated.
+        /// </summary>
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     }
 }

@@ -1,293 +1,431 @@
-using System.Text.RegularExpressions;
-using ArogyaPulse.Api.Interfaces;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using ArogyaPulse.Api.DTOs;
+using ArogyaPulse.Api.Interfaces;
+using ArogyaPulse.Api.Models;
+using Microsoft.Extensions.Options;
 
 namespace ArogyaPulse.Api.Services
 {
     public class AiChatService : IAiChatService
     {
         private readonly IPatientRepository _patientRepository;
-        private readonly ITriageService _triageService;
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly AiSettings _settings;
+        private readonly ILogger<AiChatService> _logger;
 
-        public AiChatService(IPatientRepository patientRepository, ITriageService triageService)
+        private const string Disclaimer =
+            "This assistant provides screening support only. " +
+            "It does not diagnose disease, prescribe treatment, or replace a qualified healthcare professional.";
+
+        public AiChatService(
+            IPatientRepository patientRepository,
+            IHttpClientFactory httpClientFactory,
+            IOptions<AiSettings> settings,
+            ILogger<AiChatService> logger)
         {
             _patientRepository = patientRepository;
-            _triageService = triageService;
+            _httpClientFactory = httpClientFactory;
+            _settings = settings.Value;
+            _logger = logger;
         }
 
-        public async Task<ChatResponseDto> GetGuidanceAsync(ChatRequestDto request)
+        public async Task<ChatResponseDto> GetGuidanceAsync(
+            ChatDto request)
         {
-            string message = !string.IsNullOrWhiteSpace(request.Message) ? request.Message : request.Query;
-            var queryLower = message.ToLower();
+            // Support both "message" and "query".
+            var queryText =
+                !string.IsNullOrWhiteSpace(request.Message)
+                    ? request.Message
+                    : request.Query;
 
-            // 1. Language Detection
-            string languageDetected = DetectLanguage(message, request.Language);
+            if (string.IsNullOrWhiteSpace(queryText))
+            {
+                return new ChatResponseDto
+                {
+                    Response = "Please enter a health-related question.",
+                    Severity = "Warning",
+                    Disclaimer = Disclaimer,
+                    Timestamp = DateTime.UtcNow
+                };
+            }
 
-            // 2. Vital Extraction
-            var extractedVitals = ExtractVitals(message);
+            if (string.IsNullOrWhiteSpace(_settings.ApiKey))
+            {
+                return new ChatResponseDto
+                {
+                    Response =
+                        "The AI service is not configured. " +
+                        "Please use the standard screening workflow.",
+                    Severity = "Warning",
+                    Disclaimer = Disclaimer,
+                    Timestamp = DateTime.UtcNow
+                };
+            }
 
-            // 3. Symptom Extraction
-            var extractedSymptoms = ExtractSymptoms(message);
-
-            var alerts = new List<string>();
-            var actions = new List<string>();
-            string responseText = "";
-            string severity = "Info";
             string? patientContext = null;
-            TriageResultDto? triageEval = null;
 
-            // 4. Patient Context lookup if PatientId provided
             if (request.PatientId.HasValue)
             {
-                var patient = await _patientRepository.GetByIdAsync(request.PatientId.Value);
+                var patient =
+                    await _patientRepository.GetByIdAsync(
+                        request.PatientId.Value);
+
                 if (patient != null)
                 {
-                    patientContext = $"Patient #{patient.Id} ({patient.Name}): SpO₂ {patient.SpO2}%, BP {patient.Bp}, Temp {patient.Temp:F1}°C, Glucose {patient.Glucose} mg/dL, Risk: {patient.RiskLevel}";
-                }
-            }
-
-            // 5. If vitals were extracted, calculate deterministic triage
-            if (extractedVitals != null && !string.IsNullOrWhiteSpace(extractedVitals.Bp))
-            {
-                triageEval = _triageService.EvaluateTriage(
-                    extractedVitals.Bp,
-                    extractedVitals.SpO2 > 0 ? extractedVitals.SpO2 : 98,
-                    extractedVitals.Temp > 0 ? extractedVitals.Temp : 37.0,
-                    extractedVitals.Glucose > 0 ? extractedVitals.Glucose : 100,
-                    false);
-
-                if (triageEval.RiskLevel == "High") severity = "Critical";
-                else if (triageEval.RiskLevel == "Medium") severity = "Warning";
-            }
-
-            // 6. Clinical Domain Logic & Response Formulation
-
-            // Case A: SpO2 / Oxygen extracted or queried
-            if (extractedVitals?.SpO2 > 0 || queryLower.Contains("spo2") || queryLower.Contains("oxygen") ||
-                queryLower.Contains("ऑक्सीजन") || queryLower.Contains("सांस") || queryLower.Contains("moochu"))
-            {
-                int spO2Val = extractedVitals?.SpO2 > 0 ? extractedVitals.SpO2 : (queryLower.Contains("88") ? 88 : 95);
-
-                if (spO2Val < 90)
-                {
-                    severity = "Critical";
-                    alerts.Add($"SpO2 {spO2Val}% indicates severe respiratory distress / hypoxia!");
-
-                    if (languageDetected == "Tamil")
-                    {
-                        responseText = $"⚠️ **கடுமையான ஹைபோக்ஸியா (SpO2 {spO2Val}% < 90%) அவசர வழிகாட்டுதல்:**\n" +
-                                       $"நோயாளிக்கு மூச்சுத் திணறல் மற்றும் குறைந்த ஆக்சிஜன் உள்ளது ({spO2Val}%). உடனடியாக அவசர சிகிச்சை தேவை.";
-                        actions.Add("நோயாளிக்கு உடனடியாக ஆக்சிஜன் (2-4 L/min) வழங்கவும்.");
-                        actions.Add("நோயாளிக்கு Fowler's நிலை (அமர்ந்த நிலை) தரவும்.");
-                        actions.Add("உடனடியாக 108 ஆம்புலன்ஸ் மூலமாக அரசு மருத்துவமனைக்கு மாற்றவும்.");
-                    }
-                    else if (languageDetected == "Hindi")
-                    {
-                        responseText = $"⚠️ **गंभीर हाइपोक्सिया (SpO2 {spO2Val}% < 90%) आपातकालीन मार्गदर्शन:**\n" +
-                                       $"मरीज का SpO2 {spO2Val}% है, जो गंभीर सांस लेने की समस्या को दर्शाता है।";
-                        alerts.Add($"SpO2 {spO2Val}% गंभीर हाइपोक्सिया का संकेत है!");
-                        actions.Add("मरीज को 2-4 लीटर/मिनट की दर से पूरक ऑक्सीजन दें।");
-                        actions.Add("मरीज को बैठने की स्थिति (Fowler's position) में रखें।");
-                        actions.Add("तुरंत एम्बुलेंस/अस्पताल वाहन बुलाएं और जिला अस्पताल को सूचित करें।");
-                    }
-                    else
-                    {
-                        responseText = $"⚠️ **Severe Hypoxia (SpO2 {spO2Val}% < 90%) Emergency Guidance:**\n" +
-                                       $"Extracted SpO2 level of {spO2Val}% indicates severe respiratory compromise and requires immediate emergency triage.";
-                        actions.Add("Administer supplemental oxygen (2-4 L/min) immediately.");
-                        actions.Add("Place patient in an upright sitting (Fowler's) position to aid lung expansion.");
-                        actions.Add("Dispatch emergency transport to District Hospital / CHC immediately.");
-                    }
+                    patientContext =
+                        $"Age: {patient.Age}; " +
+                        $"Gender: {patient.Gender}; " +
+                        $"Village: {patient.Village}; " +
+                        $"BP: {patient.Bp}; " +
+                        $"SpO2: {patient.SpO2}%; " +
+                        $"Temperature: {patient.Temp:F1} C; " +
+                        $"Glucose: {patient.Glucose} mg/dL; " +
+                        $"Pregnancy explicitly recorded: {patient.IsPregnant}; " +
+                        $"Current screening risk: {patient.RiskLevel} " +
+                        $"({patient.RiskScore}/100).";
                 }
                 else
                 {
-                    responseText = $"ℹ️ **SpO2 Evaluation ({spO2Val}%):**\n" +
-                                   $"• 95% - 100%: Normal oxygen saturation\n" +
-                                   $"• 90% - 94%: Moderate hypoxemia (Priority review)\n" +
-                                   $"• < 90%: Severe hypoxia (Emergency referral)";
-                    actions.Add("Verify probe placement and re-check pulse oximeter reading.");
-                }
-            }
-            // Case B: Blood Pressure / Pre-Eclampsia
-            else if (extractedVitals?.Bp != null || queryLower.Contains("bp") || queryLower.Contains("pressure") ||
-                     queryLower.Contains("बीपी") || queryLower.Contains("pre-eclampsia"))
-            {
-                string bpVal = extractedVitals?.Bp ?? "140/90";
-                if (queryLower.Contains("preg") || queryLower.Contains("গর্ভবতী") || queryLower.Contains("गर्भवती"))
-                {
-                    severity = "Critical";
-                    alerts.Add("Gestational pre-eclampsia warning!");
-                    responseText = $"🤰 **Gestational Pre-Eclampsia Protocol (BP {bpVal}):**\n" +
-                                   $"Elevated blood pressure ({bpVal}) during pregnancy poses severe risk of eclampsia.";
-                    actions.Add("Immediate referral to District Hospital Obstetric emergency department.");
-                    actions.Add("Keep patient calm in left lateral position and transport urgently.");
-                }
-                else
-                {
-                    responseText = $"🩸 **Blood Pressure Stratification ({bpVal}):**\n" +
-                                   $"• Normal: < 120/80 mmHg\n" +
-                                   $"• Stage 1 Hypertension: 140-159 / 90-99 mmHg\n" +
-                                   $"• Hypertensive Crisis: ≥ 160/100 mmHg";
-                    actions.Add("If BP ≥ 160/100, trigger doctor alert and re-check after 15 minutes rest.");
-                }
-            }
-            // Case C: Vague Symptoms without Vitals (Missing info safeguard)
-            else if (extractedSymptoms.Count > 0 && extractedVitals == null)
-            {
-                string symptomsStr = string.Join(", ", extractedSymptoms);
-                responseText = $"📋 **Observed Symptoms Detected:** {symptomsStr}\n\n" +
-                               $"To calculate an exact clinical triage risk score, please record the patient's vital signs (SpO₂, Blood Pressure, Temperature, Glucose).";
-                actions.Add("Measure SpO₂ using a pulse oximeter.");
-                actions.Add("Take Blood Pressure using a digital BP monitor.");
-                actions.Add("Check body temperature using a thermometer.");
-            }
-            // Case D: Default Welcome / Multilingual Assistant Overview
-            else
-            {
-                if (languageDetected == "Tamil")
-                {
-                    responseText = "🤖 **ஆரோக்யபல்ஸ் AI ஆஷா உதவியாளருக்கு நல்வரவு!**\n" +
-                                   "நான் தமிழ், ஆங்கிலம் மற்றும் இந்தி மொழிகளில் மருத்துவ வழிகாட்டுதல் வழங்குவேன்.\n\n" +
-                                   "உதாரணம்: 'Patient ku oxygen 88 irukku, moochu kashtama irukku.'";
-                    actions.Add("கேள்வி கேட்கவும்: 'SpO2 < 90% என்றால் என்ன செய்வது?'");
-                }
-                else if (languageDetected == "Hindi")
-                {
-                    responseText = "🤖 **आरोग्यपल्स एआई आशा सहायक में आपका स्वागत है!**\n" +
-                                   "मैं प्राथमिक स्वास्थ्य देखभाल और ट्राइएज दिशानिर्देशों में सहायता कर सकता हूँ।\n\n" +
-                                   "उदाहरण: 'मरीज का ऑक्सीजन 88 है और सांस फूल रही है।'";
-                    actions.Add("प्रश्न पूछें: 'SpO2 90 से कम होने पर क्या करें?'");
-                }
-                else
-                {
-                    responseText = "🤖 **Welcome to ArogyaPulse AI ASHA Assistant!**\n" +
-                                   "I provide natural-language vital sign extraction and clinical decision support in English, Hindi, Tamil, and Hinglish.\n\n" +
-                                   "**Example query:** 'Patient has difficulty breathing and oxygen is 88.'";
-                    actions.Add("Try asking: 'What to do when SpO2 is below 90%?'");
-                    actions.Add("Try asking: 'Patient ku moochu kashtama irukku, oxygen 88'");
+                    _logger.LogWarning(
+                        "Patient {PatientId} was requested for AI context but was not found.",
+                        request.PatientId.Value);
                 }
             }
 
+            var systemPrompt = """
+You are the ArogyaPulse ASHA Assistant.
+
+Your job is to help a frontline health worker communicate patient information
+clearly and safely.
+
+IMPORTANT SAFETY RULES:
+1. Never diagnose a disease.
+2. Never invent patient information.
+3. Never invent vital signs.
+4. Never prescribe medication or dosage.
+5. Never override the application's deterministic triage engine.
+6. If required information is missing, ask for it.
+7. Use simple language suitable for an ASHA worker.
+8. Understand English and Hindi.
+9. Return valid JSON only.
+10. Treat patient context as sensitive information.
+11. If the situation appears urgent, advise the ASHA worker to follow the
+    application's triage result and contact an appropriate healthcare professional.
+12. Do not claim that an AI response is a diagnosis.
+
+Extract only information explicitly present in the user's message.
+
+The JSON must contain:
+language
+intent
+bp
+spO2
+temp
+glucose
+symptoms
+missingInformation
+assistantResponse
+
+For unknown numeric values, use null.
+For no symptoms, use [].
+For no missing information, use [].
+
+The assistantResponse must contain safe workflow guidance only.
+""";
+
+            if (!string.IsNullOrWhiteSpace(patientContext))
+            {
+                systemPrompt +=
+                    "\nCurrent patient context:\n" +
+                    patientContext;
+            }
+
+            var requestBody = new
+            {
+                system_instruction = new
+                {
+                    parts = new[]
+                    {
+                        new
+                        {
+                            text = systemPrompt
+                        }
+                    }
+                },
+
+                contents = new[]
+                {
+                    new
+                    {
+                        role = "user",
+                        parts = new[]
+                        {
+                            new
+                            {
+                                text = queryText
+                            }
+                        }
+                    }
+                },
+
+                generationConfig = new
+                {
+                    temperature = 0.2,
+                    maxOutputTokens = 800,
+                    response_mime_type = "application/json"
+                }
+            };
+
+            var client =
+                _httpClientFactory.CreateClient("Gemini");
+
+            var url =
+                $"{_settings.BaseUrl}/models/{_settings.Model}:generateContent";
+
+            using var httpRequest =
+                new HttpRequestMessage(
+                    HttpMethod.Post,
+                    url);
+
+            httpRequest.Headers.Add(
+                "x-goog-api-key",
+                _settings.ApiKey);
+
+            httpRequest.Content =
+                JsonContent.Create(requestBody);
+
+            try
+            {
+                using var response =
+                    await client.SendAsync(httpRequest);
+
+                var responseText =
+                    await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError(
+                        "Gemini request failed. StatusCode: {StatusCode}, Response: {Response}",
+                        response.StatusCode,
+                        responseText);
+
+                    return BuildFallback(
+                        patientContext,
+                        "The AI assistant is temporarily unavailable.");
+                }
+
+                var gemini =
+                    JsonSerializer.Deserialize<GeminiResponse>(
+                        responseText,
+                        new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+
+                var generatedText =
+                    gemini?
+                        .Candidates?
+                        .FirstOrDefault()?
+                        .Content?
+                        .Parts?
+                        .FirstOrDefault()?
+                        .Text;
+
+                if (string.IsNullOrWhiteSpace(generatedText))
+                {
+                    return BuildFallback(
+                        patientContext,
+                        "The AI assistant returned no usable response.");
+                }
+
+                generatedText =
+                    CleanJson(generatedText);
+
+                AiExtractionDto? extracted;
+
+                try
+                {
+                    extracted =
+                        JsonSerializer.Deserialize<AiExtractionDto>(
+                            generatedText,
+                            new JsonSerializerOptions
+                            {
+                                PropertyNameCaseInsensitive = true
+                            });
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Gemini returned invalid JSON: {GeneratedText}",
+                        generatedText);
+
+                    return BuildFallback(
+                        patientContext,
+                        "The AI response could not be safely validated.");
+                }
+
+                if (extracted == null)
+                {
+                    return BuildFallback(
+                        patientContext,
+                        "The AI response could not be validated.");
+                }
+
+                var alerts = new List<string>();
+
+                if (extracted.SpO2 is < 90)
+                {
+                    alerts.Add(
+                        "Very low SpO2 was reported. Follow the application's triage protocol.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(extracted.Bp))
+                {
+                    alerts.Add(
+                        "Blood pressure information was extracted. Verify the measurement before clinical action.");
+                }
+
+                if (extracted.MissingInformation.Count > 0)
+                {
+                    alerts.Add(
+                        "Additional patient information is required.");
+                }
+
+                return new ChatResponseDto
+                {
+                    Response =
+                        string.IsNullOrWhiteSpace(
+                            extracted.AssistantResponse)
+                            ? "Please follow the standard screening workflow."
+                            : extracted.AssistantResponse,
+
+                    ClinicalAlerts = alerts,
+
+                    ActionSteps = extracted.MissingInformation
+                        .Select(x => $"Please provide: {x}")
+                        .ToList(),
+
+                    Severity =
+                        DetermineSeverity(extracted),
+
+                    PatientContext =
+                        patientContext,
+
+                    Disclaimer =
+                        Disclaimer,
+
+                    Timestamp =
+                        DateTime.UtcNow
+                };
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Network error while contacting Gemini.");
+
+                return BuildFallback(
+                    patientContext,
+                    "The AI assistant could not connect to the AI service.");
+            }
+            catch (TaskCanceledException ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Gemini request timed out.");
+
+                return BuildFallback(
+                    patientContext,
+                    "The AI assistant request timed out. Please try again.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "AI assistant request failed.");
+
+                return BuildFallback(
+                    patientContext,
+                    "The AI assistant is temporarily unavailable.");
+            }
+        }
+
+        private static string CleanJson(string text)
+        {
+            text = text.Trim();
+
+            if (text.StartsWith("```"))
+            {
+                var firstNewLine =
+                    text.IndexOf('\n');
+
+                if (firstNewLine >= 0)
+                {
+                    text =
+                        text[(firstNewLine + 1)..];
+                }
+
+                if (text.EndsWith("```"))
+                {
+                    text =
+                        text[..^3];
+                }
+            }
+
+            return text.Trim();
+        }
+
+        private static string DetermineSeverity(
+            AiExtractionDto extraction)
+        {
+            if (extraction.SpO2 is < 90)
+                return "Critical";
+
+            if (extraction.MissingInformation.Count > 0)
+                return "Warning";
+
+            return "Info";
+        }
+
+        private static ChatResponseDto BuildFallback(
+            string? patientContext,
+            string message)
+        {
             return new ChatResponseDto
             {
-                Response = responseText,
-                ClinicalAlerts = alerts,
-                ActionSteps = actions,
-                Severity = severity,
-                LanguageDetected = languageDetected,
+                Response = message,
+                Severity = "Warning",
                 PatientContext = patientContext,
-                ExtractedVitals = extractedVitals,
-                ExtractedSymptoms = extractedSymptoms,
-                TriageEvaluation = triageEval,
-                Disclaimer = "This assistant provides screening support and does not diagnose disease. All findings must be reviewed by a qualified healthcare professional.",
+                Disclaimer = Disclaimer,
                 Timestamp = DateTime.UtcNow
             };
         }
 
-        private string DetectLanguage(string text, string requestedLang)
+        private sealed class GeminiResponse
         {
-            if (requestedLang.ToLower() == "ta" || text.Any(c => c >= 0x0B80 && c <= 0x0BFF) ||
-                text.ToLower().Contains("irukku") || text.ToLower().Contains("kashtama") || text.ToLower().Contains("moochu") || text.ToLower().Contains("kaachal"))
-            {
-                return "Tamil";
-            }
-            if (requestedLang.ToLower() == "hi" || text.Any(c => c >= 0x0900 && c <= 0x097F) ||
-                text.ToLower().Contains("मरीज") || text.ToLower().Contains("है") || text.ToLower().Contains("बुखार"))
-            {
-                return "Hindi";
-            }
-            if (text.ToLower().Contains("hai") || text.ToLower().Contains("mariz") || text.ToLower().Contains("ho gaya"))
-            {
-                return "Hinglish";
-            }
-            return "English";
+            [JsonPropertyName("candidates")]
+            public List<GeminiCandidate>? Candidates { get; set; }
         }
 
-        private VitalsDto? ExtractVitals(string text)
+        private sealed class GeminiCandidate
         {
-            string textLower = text.ToLower();
-            int spO2 = 0;
-            string bp = "";
-            double temp = 0.0;
-            int glucose = 0;
-
-            // SpO2 Regex (e.g., "oxygen 88", "spo2 88", "88%", "88 oxygen")
-            var spO2Match = Regex.Match(textLower, @"(spo2|oxygen|ऑक्सीजन)\s*[:=]?\s*(\d{2,3})");
-            if (spO2Match.Success && int.TryParse(spO2Match.Groups[2].Value, out int sVal))
-            {
-                spO2 = sVal;
-            }
-            else
-            {
-                var percentMatch = Regex.Match(textLower, @"(\d{2,3})\s*%");
-                if (percentMatch.Success && int.TryParse(percentMatch.Groups[1].Value, out int pVal) && pVal <= 100 && pVal >= 40)
-                {
-                    spO2 = pVal;
-                }
-            }
-
-            // BP Regex (e.g., "160/100", "bp 140 90")
-            var bpMatch = Regex.Match(textLower, @"\b(\d{2,3}/\d{2,3})\b");
-            if (bpMatch.Success)
-            {
-                bp = bpMatch.Groups[1].Value;
-            }
-            else
-            {
-                var bpAltMatch = Regex.Match(textLower, @"bp\s*[:=]?\s*(\d{2,3})\s+(\d{2,3})");
-                if (bpAltMatch.Success)
-                {
-                    bp = $"{bpAltMatch.Groups[1].Value}/{bpAltMatch.Groups[2].Value}";
-                }
-            }
-
-            // Temp Regex (e.g., "temp 38.5", "temperature 39")
-            var tempMatch = Regex.Match(textLower, @"(temp|temperature|तापमान)\s*[:=]?\s*(\d{2,3}\.?\d?)");
-            if (tempMatch.Success && double.TryParse(tempMatch.Groups[2].Value, out double tVal))
-            {
-                temp = tVal;
-            }
-
-            // Glucose Regex (e.g., "glucose 210", "sugar 180")
-            var glucoseMatch = Regex.Match(textLower, @"(glucose|sugar|शुगर)\s*[:=]?\s*(\d{2,3})");
-            if (glucoseMatch.Success && int.TryParse(glucoseMatch.Groups[2].Value, out int gVal))
-            {
-                glucose = gVal;
-            }
-
-            if (spO2 > 0 || !string.IsNullOrWhiteSpace(bp) || temp > 0 || glucose > 0)
-            {
-                return new VitalsDto
-                {
-                    Bp = string.IsNullOrWhiteSpace(bp) ? "120/80" : bp,
-                    SpO2 = spO2 > 0 ? spO2 : 98,
-                    Temp = temp > 0 ? temp : 37.0,
-                    Glucose = glucose > 0 ? glucose : 100
-                };
-            }
-
-            return null;
+            [JsonPropertyName("content")]
+            public GeminiContent? Content { get; set; }
         }
 
-        private List<string> ExtractSymptoms(string text)
+        private sealed class GeminiContent
         {
-            var symptoms = new List<string>();
-            string textLower = text.ToLower();
+            [JsonPropertyName("parts")]
+            public List<GeminiPart>? Parts { get; set; }
+        }
 
-            if (textLower.Contains("breathing") || textLower.Contains("moochu") || textLower.Contains("saans") || textLower.Contains("सांस"))
-                symptoms.Add("Difficulty breathing");
-            if (textLower.Contains("fever") || textLower.Contains("kaachal") || textLower.Contains("bukhar") || textLower.Contains("बुखार"))
-                symptoms.Add("Fever");
-            if (textLower.Contains("headache") || textLower.Contains("head ache") || textLower.Contains("sirdard") || textLower.Contains("सिरदर्द"))
-                symptoms.Add("Severe headache");
-            if (textLower.Contains("dizziness") || textLower.Contains("chakkar") || textLower.Contains("mayakkam"))
-                symptoms.Add("Dizziness");
-            if (textLower.Contains("chest pain") || textLower.Contains("chest discomfort") || textLower.Contains("सीने में दर्द"))
-                symptoms.Add("Chest pain");
-            if (textLower.Contains("swelling") || textLower.Contains("edema") || textLower.Contains("सूजन"))
-                symptoms.Add("Swelling");
-
-            return symptoms;
+        private sealed class GeminiPart
+        {
+            [JsonPropertyName("text")]
+            public string? Text { get; set; }
         }
     }
 }
