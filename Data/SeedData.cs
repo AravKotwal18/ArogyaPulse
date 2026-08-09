@@ -1,5 +1,4 @@
 using ArogyaPulse.Api.Models;
-
 namespace ArogyaPulse.Api.Data
 {
     public static class SeedData
@@ -8,9 +7,8 @@ namespace ArogyaPulse.Api.Data
         {
             if (context.Patients.Any())
             {
-                return; // already seeded
+                return;
             }
-
             var patients = new List<Patient>
             {
                 new Patient
@@ -70,7 +68,6 @@ namespace ArogyaPulse.Api.Data
                     RiskLevel = "Low"
                 }
             };
-
             context.Patients.AddRange(patients);
             context.SaveChanges();
         }
