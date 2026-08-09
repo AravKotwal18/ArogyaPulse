@@ -435,3 +435,6 @@ FodyWeavers.xsd
 *.msm
 *.msp
 >>>>>>> ee1b49c7f1620e49760c782f9ada17fc604f1141
+
+*.db-shm
+*.db-wal
