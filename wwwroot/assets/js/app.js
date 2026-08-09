@@ -54,6 +54,8 @@ const i18n = {
         intakeHeader: '📋 ASHA Patient Registration & Vitals Intake',
         patientNameLabel: 'Patient Full Name *',
         ageLabel: 'Age (Years) *',
+        genderLabel: 'Gender *',
+        bloodGroupLabel: 'Blood Group',
         villageLabel: 'Village Cluster *',
         isPregnantLabel: 'Obstetric Status: Is Pregnant?',
         vitalSignsHeader: '🩺 Physiological Vital Signs',
@@ -135,6 +137,8 @@ const i18n = {
         intakeHeader: '📋 आशा रोगी पंजीकरण एवं विटल्स इनटेक',
         patientNameLabel: 'रोगी का पूरा नाम *',
         ageLabel: 'आयु (वर्ष) *',
+        genderLabel: 'लिंग *',
+        bloodGroupLabel: 'रक्त समूह',
         villageLabel: 'गाँव का नाम *',
         isPregnantLabel: 'गर्भावस्था स्थिति: क्या गर्भवती है?',
         vitalSignsHeader: '🩺 शारीरिक महत्वपूर्ण संकेत (Vitals)',
@@ -356,6 +360,31 @@ function renderIntake() {
                     <input type="number" class="form-input" id="patientAge" min="0" max="120" placeholder="e.g. 28" required>
                 </div>
                 <div class="form-group">
+                    <label class="form-label">${t('genderLabel')}</label>
+                    <select class="form-select" id="patientGender" required>
+                        <option value="Female">Female ♀</option>
+                        <option value="Male">Male ♂</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-2" style="margin-top: 0.5rem;">
+                <div class="form-group">
+                    <label class="form-label">${t('bloodGroupLabel')}</label>
+                    <select class="form-select" id="patientBloodGroup">
+                        <option value="Unknown">Unknown / Not Tested</option>
+                        <option value="A+">A+</option>
+                        <option value="A-">A-</option>
+                        <option value="B+">B+</option>
+                        <option value="B-">B-</option>
+                        <option value="O+">O+</option>
+                        <option value="O-">O-</option>
+                        <option value="AB+">AB+</option>
+                        <option value="AB-">AB-</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label class="form-label">${t('villageLabel')}</label>
                     <select class="form-select" id="patientVillage" required>
                         <option value="">Select Village...</option>
@@ -367,7 +396,7 @@ function renderIntake() {
                 </div>
             </div>
 
-            <div class="form-group" style="margin-top: 0.5rem;">
+            <div class="form-group" id="pregnancyGroupContainer" style="margin-top: 0.5rem;">
                 <label class="form-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                     <input type="checkbox" id="isPregnant" style="width: 18px; height: 18px; accent-color: var(--primary);">
                     <span>${t('isPregnantLabel')}</span>
@@ -426,6 +455,11 @@ function setupIntakeListeners() {
     const form = document.getElementById('intakeForm');
     if (!form) return;
 
+    const genderSelect = document.getElementById('patientGender');
+    if (genderSelect) {
+        genderSelect.addEventListener('change', handleGenderChange);
+    }
+
     // Attach live calculator triggers
     document.querySelectorAll('.vital-calc-trigger, #isPregnant').forEach(input => {
         input.addEventListener('input', updateLiveCalculator);
@@ -436,6 +470,24 @@ function setupIntakeListeners() {
         e.preventDefault();
         await submitIntake();
     });
+
+    handleGenderChange();
+}
+
+function handleGenderChange() {
+    const genderSelect = document.getElementById('patientGender');
+    const pregContainer = document.getElementById('pregnancyGroupContainer');
+    const isPregnant = document.getElementById('isPregnant');
+
+    if (!genderSelect || !pregContainer) return;
+
+    if (genderSelect.value === 'Female') {
+        pregContainer.style.display = 'block';
+    } else {
+        pregContainer.style.display = 'none';
+        if (isPregnant) isPregnant.checked = false;
+    }
+    updateLiveCalculator();
 }
 
 function updateLiveCalculator() {
@@ -443,7 +495,8 @@ function updateLiveCalculator() {
     const spO2 = parseInt(document.getElementById('spO2Input')?.value) || 98;
     const temp = parseFloat(document.getElementById('tempInput')?.value) || 37.0;
     const glucose = parseInt(document.getElementById('glucoseInput')?.value) || 100;
-    const isPregnant = document.getElementById('isPregnant')?.checked || false;
+    const gender = document.getElementById('patientGender')?.value || 'Female';
+    const isPregnant = (gender === 'Female') && (document.getElementById('isPregnant')?.checked || false);
 
     let score = 0;
     let breakdown = [];
@@ -515,8 +568,10 @@ function updateLiveCalculator() {
 async function submitIntake() {
     const name = document.getElementById('patientName').value.trim();
     const age = parseInt(document.getElementById('patientAge').value);
+    const gender = document.getElementById('patientGender').value;
+    const bloodGroup = document.getElementById('patientBloodGroup').value;
     const village = document.getElementById('patientVillage').value;
-    const isPregnant = document.getElementById('isPregnant').checked;
+    const isPregnant = (gender === 'Female') && document.getElementById('isPregnant').checked;
     const bp = document.getElementById('bpInput').value.trim();
     const spO2 = parseInt(document.getElementById('spO2Input').value);
     const temp = parseFloat(document.getElementById('tempInput').value);
@@ -526,6 +581,8 @@ async function submitIntake() {
     const payload = {
         name,
         age,
+        gender,
+        bloodGroup,
         village,
         isPregnant,
         vitals: { bp, spO2, temp, glucose },
@@ -545,7 +602,7 @@ async function submitIntake() {
             showToast(`Patient ${name} registered successfully!`, result.data.riskLevel === 'High' ? 'danger' : 'success');
             openPatientModal(result.data.id, result.triageEvaluation);
             document.getElementById('intakeForm').reset();
-            updateLiveCalculator();
+            handleGenderChange();
             await loadPatients();
         } else {
             showToast('Error registering patient', 'danger');
@@ -668,16 +725,26 @@ function renderTriageQueueList() {
     filtered.forEach(p => {
         const borderClass = p.riskLevel === 'High' ? 'border-high' : p.riskLevel === 'Medium' ? 'border-medium' : 'border-low';
         const badgeClass = p.riskLevel === 'High' ? 'badge-high' : p.riskLevel === 'Medium' ? 'badge-medium' : 'badge-low';
+        
+        const genderText = p.gender || 'Female';
+        const genderIcon = genderText === 'Female' ? '♀ Female' : genderText === 'Male' ? '♂ Male' : genderText;
+        const bloodGroupText = p.bloodGroup && p.bloodGroup !== 'Unknown' ? ` • 🩸 Blood: ${p.bloodGroup}` : '';
+
+        // Obstetric status icon ONLY for female patients
+        const isFemale = (genderText === 'Female');
+        const pregBadge = isFemale 
+            ? (p.isPregnant ? '<span style="font-size: 0.85rem; background: #fbcfe8; color: #9d174d; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;" title="Pregnant Patient">🤰 Pregnant</span>' : '<span style="font-size: 0.8rem; color: var(--text-muted);">Non-pregnant</span>')
+            : '';
 
         html += `
         <div class="patient-card ${borderClass}">
             <div class="patient-main-info" style="flex: 2;">
-                <h3>
+                <h3 style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
                     <span>${p.name}</span>
-                    ${p.isPregnant ? '<span style="font-size: 0.9rem;" title="Pregnant Patient">🤰</span>' : ''}
+                    ${pregBadge}
                 </h3>
                 <div class="patient-meta">
-                    📍 <strong>${p.village}</strong> • Age ${p.age} • Registered: ${new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    📍 <strong>${p.village}</strong> • ${genderIcon} • Age ${p.age}${bloodGroupText} • Registered: ${new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
                 <div class="patient-vitals-strip">
                     <div class="vital-tag"><span class="vital-tag-label">BP:</span><span class="vital-tag-val">${p.vitals.bp}</span></div>
@@ -783,12 +850,19 @@ async function openPatientModal(id, evalData = null) {
 
     modalTitle.innerText = `Patient #${p.id} — ${p.name}`;
 
+    const genderText = p.gender || 'Female';
+    const isFemale = (genderText === 'Female');
+    const obstetricHtml = isFemale 
+        ? `<div><strong>Obstetric Status:</strong> ${p.isPregnant ? 'Pregnant 🤰' : 'Non-pregnant'}</div>`
+        : `<div><strong>Obstetric Status:</strong> N/A (Male)</div>`;
+
     modalBody.innerHTML = `
     <div style="display: flex; flex-direction: column; gap: 1.25rem;">
         <div class="grid grid-2" style="background: var(--bg-app); padding: 1rem; border-radius: var(--radius-md);">
             <div><strong>Village:</strong> ${p.village}</div>
-            <div><strong>Age:</strong> ${p.age} years</div>
-            <div><strong>Obstetric Status:</strong> ${p.isPregnant ? 'Pregnant 🤰' : 'Non-pregnant'}</div>
+            <div><strong>Age & Gender:</strong> ${p.age} years (${genderText})</div>
+            <div><strong>Blood Group:</strong> ${p.bloodGroup || 'Unknown'}</div>
+            ${obstetricHtml}
             <div><strong>Registered:</strong> ${new Date(p.timestamp).toLocaleString()}</div>
         </div>
 
@@ -1100,7 +1174,7 @@ function renderAlgorithm() {
                 </div>
                 <div class="form-group">
                     <label class="form-label" style="cursor: pointer;">
-                        <input type="checkbox" id="simPregnant" class="sim-trigger"> Is Pregnant Patient?
+                        <input type="checkbox" id="simPregnant" class="sim-trigger"> Is Pregnant Patient? (Female)
                     </label>
                 </div>
             </div>

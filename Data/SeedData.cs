@@ -1,14 +1,35 @@
 using ArogyaPulse.Api.Models;
+
 namespace ArogyaPulse.Api.Data
 {
     public static class SeedData
     {
         public static void Initialize(AppDbContext context)
         {
-            if (context.Patients.Any())
+            var existingPatients = context.Patients.ToList();
+            if (existingPatients.Any())
             {
+                bool modified = false;
+                foreach (var p in existingPatients)
+                {
+                    if (string.IsNullOrWhiteSpace(p.Gender))
+                    {
+                        p.Gender = (p.Name.Contains("Rajesh") || p.Name.Contains("Vikram") || p.Name.Contains("Ramesh")) ? "Male" : "Female";
+                        p.BloodGroup = p.Name.Contains("Rajesh") ? "A+" : p.Name.Contains("Vikram") ? "B-" : p.Name.Contains("Priya") ? "B+" : "O+";
+                        if (p.Gender != "Female")
+                        {
+                            p.IsPregnant = false;
+                        }
+                        modified = true;
+                    }
+                }
+                if (modified)
+                {
+                    context.SaveChanges();
+                }
                 return;
             }
+
             var patients = new List<Patient>
             {
                 new Patient
@@ -126,6 +147,7 @@ namespace ArogyaPulse.Api.Data
                     Timestamp = DateTime.UtcNow.AddHours(-6)
                 }
             };
+
             context.Patients.AddRange(patients);
             context.SaveChanges();
         }
