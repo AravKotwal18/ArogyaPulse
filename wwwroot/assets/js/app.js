@@ -213,6 +213,15 @@ function setupGlobalEvents() {
             if (page) renderPage(page);
         });
     });
+
+    updateOfflineBadge();
+    window.addEventListener('online', () => {
+        showToast('🟢 Internet connection restored! Auto-syncing offline queue...', 'success');
+        syncOfflineQueue();
+    });
+    window.addEventListener('offline', () => {
+        showToast('🔴 Internet disconnected — Switching to local offline mode.', 'warning');
+    });
 }
 
 function toggleLanguage() {
@@ -578,6 +587,8 @@ async function submitIntake() {
     const glucose = parseInt(document.getElementById('glucoseInput').value);
     const symptoms = document.getElementById('symptomsInput').value.trim();
 
+    const localRecordId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'offline-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+
     const payload = {
         name,
         age,
@@ -586,8 +597,14 @@ async function submitIntake() {
         village,
         isPregnant,
         vitals: { bp, spO2, temp, glucose },
-        symptoms
+        symptoms,
+        localRecordId
     };
+
+    if (!navigator.onLine) {
+        saveOfflineRecord(payload);
+        return;
+    }
 
     try {
         const response = await fetch(`${API_BASE}/patients`, {
@@ -608,8 +625,76 @@ async function submitIntake() {
             showToast('Error registering patient', 'danger');
         }
     } catch (err) {
-        console.error('Error registering patient:', err);
-        showToast('Network error while registering patient', 'danger');
+        console.warn('Network request failed, switching to offline local storage:', err);
+        saveOfflineRecord(payload);
+    }
+}
+
+function saveOfflineRecord(payload) {
+    try {
+        let offlineQueue = JSON.parse(localStorage.getItem('arogya_offline_queue') || '[]');
+        offlineQueue.push({
+            ...payload,
+            capturedAt: new Date().toISOString()
+        });
+        localStorage.setItem('arogya_offline_queue', JSON.stringify(offlineQueue));
+
+        showToast(`⟳ Offline Mode — Patient ${payload.name} saved locally [UUID: ${payload.localRecordId.substring(0, 8)}]. Pending sync.`, 'warning');
+        document.getElementById('intakeForm')?.reset();
+        handleGenderChange();
+        updateOfflineBadge();
+    } catch (e) {
+        showToast('Error saving offline record locally', 'danger');
+    }
+}
+
+async function syncOfflineQueue() {
+    let queue = JSON.parse(localStorage.getItem('arogya_offline_queue') || '[]');
+    if (queue.length === 0) {
+        showToast('No offline records pending synchronization.', 'success');
+        return;
+    }
+
+    try {
+        showToast(`Syncing ${queue.length} offline patient record(s)...`, 'warning');
+
+        const syncPayload = {
+            deviceId: 'ASHA-HANDHELD-01',
+            records: queue
+        };
+
+        const response = await fetch(`${API_BASE}/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(syncPayload)
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            const data = result.data;
+            localStorage.removeItem('arogya_offline_queue');
+            updateOfflineBadge();
+            showToast(`✓ Synchronization complete! ${data.synced} synced, ${data.conflicts} conflicts.`, 'success');
+            await loadPatients();
+            if (state.currentPage === 'doctor') renderTriageQueueList();
+        } else {
+            showToast('Sync failed: ' + result.message, 'danger');
+        }
+    } catch (err) {
+        showToast('Sync server unreachable. Please check network connection.', 'danger');
+    }
+}
+
+function updateOfflineBadge() {
+    let queue = JSON.parse(localStorage.getItem('arogya_offline_queue') || '[]');
+    const badge = document.getElementById('offlineQueueBtn');
+    if (badge) {
+        if (queue.length > 0) {
+            badge.style.display = 'inline-flex';
+            badge.innerText = `⟳ Sync Offline Records (${queue.length})`;
+        } else {
+            badge.style.display = 'none';
+        }
     }
 }
 
@@ -970,21 +1055,24 @@ function resendAlert(id) {
 function renderBot() {
     return `
     <div class="card">
-        <div class="card-header-title">${t('botHeader')}</div>
+        <div class="card-header-title">
+            <span>${t('botHeader')}</span>
+            <span class="badge badge-status">Natural Language Extraction Engine</span>
+        </div>
         <div class="card-subtitle">${t('botSub')}</div>
 
-        <!-- Suggestion Chips -->
+        <!-- Multilingual Suggestion Chips -->
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem;">
+            <button class="btn btn-outline btn-sm" onclick="sendPromptChip('Patient ku moochu kashtama irukku, oxygen 88')">🇮🇳 Tamil: Mooschu Kashtama (SpO2 88%)</button>
+            <button class="btn btn-outline btn-sm" onclick="sendPromptChip('मरीज का बीपी 160/100 है, सांस फूल रही है')">🇮🇳 Hindi: BP 160/100 High Risk</button>
             <button class="btn btn-outline btn-sm" onclick="sendPromptChip('What to do if SpO2 is below 90%?')">${t('chipHypoxia')}</button>
             <button class="btn btn-outline btn-sm" onclick="sendPromptChip('Pre-eclampsia warning signs in pregnancy')">${t('chipPreeclampsia')}</button>
-            <button class="btn btn-outline btn-sm" onclick="sendPromptChip('Hypertensive crisis blood pressure thresholds')">${t('chipBP')}</button>
-            <button class="btn btn-outline btn-sm" onclick="sendPromptChip('जब SpO2 < 90% हो तो क्या करें?')">${t('chipHindiBP')}</button>
         </div>
 
-        <div id="chatBox" style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; height: 380px; overflow-y: auto; margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
+        <div id="chatBox" style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; height: 420px; overflow-y: auto; margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
             <div style="background: white; border: 1px solid var(--border-color); padding: 1rem; border-radius: var(--radius-md); max-width: 85%;">
                 <strong>🤖 ASHA Bot AI:</strong>
-                <p style="margin-top: 0.25rem;">Hello! I am your AI Clinical Assistant. You can ask me clinical triage questions in English or Hindi regarding vital signs, pre-eclampsia, hypoxia, or WHO guidelines.</p>
+                <p style="margin-top: 0.25rem;">Hello! I am your AI Clinical Assistant. Type or paste ASHA observations in <strong>English, Hindi, Tamil, or Hinglish</strong> (e.g. <em>"Patient ku moochu kashtama irukku, oxygen 88"</em>). I will extract vitals, symptoms, and run automated triage scoring.</p>
             </div>
         </div>
 
@@ -1018,7 +1106,7 @@ async function sendChatMessage() {
 
     // Append User Message
     const userDiv = document.createElement('div');
-    userDiv.style.cssText = 'align-self: flex-end; background: var(--primary); color: white; padding: 0.85rem 1.15rem; border-radius: var(--radius-md); max-width: 80%;';
+    userDiv.style.cssText = 'align-self: flex-end; background: var(--primary); color: white; padding: 0.85rem 1.15rem; border-radius: var(--radius-md); max-width: 80%; font-weight: 500;';
     userDiv.innerText = query;
     chatBox.appendChild(userDiv);
 
@@ -1028,7 +1116,7 @@ async function sendChatMessage() {
     // Typing Indicator
     const typingDiv = document.createElement('div');
     typingDiv.style.cssText = 'background: white; border: 1px solid var(--border-color); padding: 0.75rem 1rem; border-radius: var(--radius-md); max-width: 80%; color: var(--text-muted);';
-    typingDiv.innerText = '🤖 ASHA Bot AI is thinking...';
+    typingDiv.innerText = '🤖 ASHA Bot AI is extracting vitals & analyzing clinical protocols...';
     chatBox.appendChild(typingDiv);
     chatBox.scrollTop = chatBox.scrollHeight;
 
@@ -1045,16 +1133,47 @@ async function sendChatMessage() {
         if (result.success) {
             const data = result.data;
             const botDiv = document.createElement('div');
-            botDiv.style.cssText = 'background: white; border: 1px solid var(--border-color); border-left: 4px solid var(--primary); padding: 1rem; border-radius: var(--radius-md); max-width: 85%;';
+            const borderColor = data.severity === 'Critical' ? 'var(--danger)' : data.severity === 'Warning' ? 'var(--warning)' : 'var(--primary)';
+            botDiv.style.cssText = `background: white; border: 1px solid var(--border-color); border-left: 5px solid ${borderColor}; padding: 1.1rem; border-radius: var(--radius-md); max-width: 88%;`;
 
-            let actionsHtml = data.actionSteps.length > 0 
-                ? `<div style="margin-top: 0.5rem;"><strong>Action Steps:</strong><ul style="padding-left: 1.25rem; font-size: 0.9rem;">${data.actionSteps.map(a => `<li>${a}</li>`).join('')}</ul></div>` 
+            let metaBadges = `<div style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.6rem;">`;
+            metaBadges += `<span class="badge badge-status" style="font-size: 0.78rem;">🌐 Language: ${data.languageDetected || 'Detected'}</span>`;
+
+            if (data.extractedVitals) {
+                const v = data.extractedVitals;
+                let vitalsText = [];
+                if (v.spO2 > 0) vitalsText.push(`SpO2: ${v.spO2}%`);
+                if (v.bp) vitalsText.push(`BP: ${v.bp}`);
+                if (v.temp > 0 && v.temp !== 37) vitalsText.push(`Temp: ${v.temp}°C`);
+                if (v.glucose > 0 && v.glucose !== 100) vitalsText.push(`Glucose: ${v.glucose}`);
+                metaBadges += `<span class="badge badge-high" style="font-size: 0.78rem; background: #e0f2fe; color: #0369a1;">🩺 Vitals Extracted: ${vitalsText.join(' • ')}</span>`;
+            }
+
+            if (data.extractedSymptoms && data.extractedSymptoms.length > 0) {
+                metaBadges += `<span class="badge" style="font-size: 0.78rem; background: #f1f5f9; color: #334155;">🏷️ Symptoms: ${data.extractedSymptoms.join(', ')}</span>`;
+            }
+
+            if (data.triageEvaluation) {
+                const tr = data.triageEvaluation;
+                const trBadgeClass = tr.riskLevel === 'High' ? 'badge-high' : tr.riskLevel === 'Medium' ? 'badge-medium' : 'badge-low';
+                metaBadges += `<span class="badge ${trBadgeClass}" style="font-size: 0.78rem;">⚡ Triage: ${tr.riskLevel.toUpperCase()} RISK (${tr.totalScore} PTS)</span>`;
+            }
+            metaBadges += `</div>`;
+
+            let actionsHtml = data.actionSteps && data.actionSteps.length > 0 
+                ? `<div style="margin-top: 0.75rem; background: #f8fafc; padding: 0.75rem; border-radius: var(--radius-sm); border: 1px solid #e2e8f0;"><strong>Action Steps:</strong><ul style="padding-left: 1.25rem; margin-top: 0.25rem; font-size: 0.9rem;">${data.actionSteps.map(a => `<li>${a}</li>`).join('')}</ul></div>` 
+                : '';
+
+            let disclaimerHtml = data.disclaimer 
+                ? `<div style="margin-top: 0.75rem; font-size: 0.78rem; color: var(--text-muted); font-style: italic; border-top: 1px solid #e2e8f0; padding-top: 0.5rem;">⚠️ Disclaimer: ${data.disclaimer}</div>`
                 : '';
 
             botDiv.innerHTML = `
-            <strong>🤖 ASHA Bot AI Guidance:</strong>
-            <div style="margin-top: 0.4rem; white-space: pre-line;">${data.response}</div>
-            ${actionsHtml}`;
+            ${metaBadges}
+            <strong style="color: var(--primary-dark);">🤖 ASHA Bot AI Guidance:</strong>
+            <div style="margin-top: 0.4rem; white-space: pre-line; line-height: 1.5;">${data.response}</div>
+            ${actionsHtml}
+            ${disclaimerHtml}`;
 
             chatBox.appendChild(botDiv);
         }

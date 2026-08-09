@@ -17,6 +17,9 @@ namespace ArogyaPulse.Api.Models
         [Required, MaxLength(50)]
         public string Action { get; set; } = string.Empty;
 
+        [MaxLength(100)]
+        public string LocalRecordId { get; set; } = string.Empty;
+
         /// <summary>
         /// JSON-serialized patient record payload from offline device.
         /// </summary>

@@ -27,6 +27,9 @@ namespace ArogyaPulse.Api.DTOs
         public string Symptoms { get; set; } = string.Empty;
         public bool IsPregnant { get; set; } = false;
 
+        [Required]
+        public string LocalRecordId { get; set; } = string.Empty;
+
         /// <summary>
         /// Timestamp from the offline device when the record was captured.
         /// </summary>
@@ -44,6 +47,7 @@ namespace ArogyaPulse.Api.DTOs
 
     public class SyncRecordResultDto
     {
+        public string LocalRecordId { get; set; } = string.Empty;
         public string PatientName { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty; // Synced, Conflict, Error
         public int? PatientId { get; set; }

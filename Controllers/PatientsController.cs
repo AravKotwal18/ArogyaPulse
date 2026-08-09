@@ -184,7 +184,22 @@ namespace ArogyaPulse.Api.Controllers
 
             var updated = await _repository.UpdateAsync(existing);
 
-            // Audit: patient update
+            // Audit: specific action events
+            if (!string.IsNullOrWhiteSpace(updateDto.Status))
+            {
+                await _auditService.LogAsync(id, "StatusChanged", "Doctor", $"Status changed to '{updateDto.Status}'.");
+                if (updateDto.Status.Contains("Referred"))
+                {
+                    await _auditService.LogAsync(id, "ReferralCreated", "Doctor", $"Referral created: '{updateDto.Status}'.");
+                }
+            }
+
+            if (updateDto.DoctorNotes != null)
+            {
+                await _auditService.LogAsync(id, "DoctorNoteUpdated", "Doctor", $"Doctor notes updated: '{updateDto.DoctorNotes}'.");
+                await _auditService.LogAsync(id, "DoctorReviewed", "Doctor", "Case reviewed by physician.");
+            }
+
             if (changes.Count > 0)
             {
                 await _auditService.LogAsync(

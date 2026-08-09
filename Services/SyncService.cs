@@ -41,11 +41,28 @@ namespace ArogyaPulse.Api.Services
 
             foreach (var record in request.Records)
             {
-                var result = new SyncRecordResultDto { PatientName = record.Name };
+                var localId = string.IsNullOrWhiteSpace(record.LocalRecordId) ? Guid.NewGuid().ToString() : record.LocalRecordId;
+                var result = new SyncRecordResultDto
+                {
+                    LocalRecordId = localId,
+                    PatientName = record.Name
+                };
 
                 try
                 {
-                    // Check for duplicates: same name + village within time window
+                    // 1. Idempotency Check: Already synced by LocalRecordId UUID
+                    var existingByLocalId = await _context.Patients.FirstOrDefaultAsync(p => p.LocalRecordId == localId);
+                    if (existingByLocalId != null)
+                    {
+                        result.Status = "Synced";
+                        result.PatientId = existingByLocalId.Id;
+                        result.Message = $"Already synced (Idempotent UUID match #{existingByLocalId.Id}).";
+                        response.Synced++;
+                        response.Results.Add(result);
+                        continue;
+                    }
+
+                    // 2. Duplicate/Conflict Check: Name + Village match within time window
                     var windowStart = record.CapturedAt.AddMinutes(-DuplicateWindowMinutes);
                     var windowEnd = record.CapturedAt.AddMinutes(DuplicateWindowMinutes);
 
@@ -58,14 +75,14 @@ namespace ArogyaPulse.Api.Services
                     if (isDuplicate)
                     {
                         result.Status = "Conflict";
-                        result.Message = $"Duplicate detected: patient '{record.Name}' in '{record.Village}' within {DuplicateWindowMinutes}-minute window.";
+                        result.Message = $"Duplicate conflict: patient '{record.Name}' in '{record.Village}' captured within {DuplicateWindowMinutes}-minute window.";
                         response.Conflicts++;
 
-                        // Log the conflict
                         _context.SyncLogs.Add(new SyncLog
                         {
                             DeviceId = request.DeviceId,
                             Action = "SyncConflict",
+                            LocalRecordId = localId,
                             Payload = JsonSerializer.Serialize(record),
                             Status = "Conflict",
                             CreatedAt = DateTime.UtcNow
@@ -73,7 +90,7 @@ namespace ArogyaPulse.Api.Services
                     }
                     else
                     {
-                        // Create new patient from offline record
+                        // 3. Create new patient from offline record
                         var gender = string.IsNullOrWhiteSpace(record.Gender) ? "Unknown" : record.Gender;
                         var patient = new Patient
                         {
@@ -89,6 +106,7 @@ namespace ArogyaPulse.Api.Services
                             Symptoms = record.Symptoms,
                             IsPregnant = gender == "Female" ? record.IsPregnant : false,
                             Status = "Pending",
+                            LocalRecordId = localId,
                             Timestamp = record.CapturedAt
                         };
 
@@ -103,7 +121,7 @@ namespace ArogyaPulse.Api.Services
 
                         result.Status = "Synced";
                         result.PatientId = patient.Id;
-                        result.Message = $"Successfully synced. Risk: {triage.RiskLevel} ({triage.TotalScore}/100)";
+                        result.Message = $"Successfully synced offline record. Risk: {triage.RiskLevel} ({triage.TotalScore}/100)";
                         response.Synced++;
 
                         // Log sync
@@ -111,6 +129,7 @@ namespace ArogyaPulse.Api.Services
                         {
                             DeviceId = request.DeviceId,
                             Action = "SyncCreated",
+                            LocalRecordId = localId,
                             Payload = JsonSerializer.Serialize(record),
                             Status = "Synced",
                             PatientId = patient.Id,
@@ -122,12 +141,12 @@ namespace ArogyaPulse.Api.Services
                             patient.Id,
                             "OfflineSync",
                             $"Device:{request.DeviceId}",
-                            $"Patient synced from offline. Risk: {triage.RiskLevel}");
+                            $"Offline record synced [UUID: {localId}]. Risk: {triage.RiskLevel}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to sync record for {Name}", record.Name);
+                    _logger.LogError(ex, "Failed to sync record for {Name} [UUID: {LocalId}]", record.Name, localId);
                     result.Status = "Error";
                     result.Message = $"Sync failed: {ex.Message}";
                 }

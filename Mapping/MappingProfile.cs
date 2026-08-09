@@ -33,6 +33,8 @@ namespace ArogyaPulse.Api.Mapping
                 .ForMember(dest => dest.Id, opt => opt.Ignore())
                 .ForMember(dest => dest.RiskScore, opt => opt.Ignore())
                 .ForMember(dest => dest.RiskLevel, opt => opt.Ignore())
+                .ForMember(dest => dest.LocalRecordId, opt => opt.MapFrom(src =>
+                    string.IsNullOrWhiteSpace(src.LocalRecordId) ? Guid.NewGuid().ToString() : src.LocalRecordId))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => "Pending"))
                 .ForMember(dest => dest.DoctorNotes, opt => opt.MapFrom(src => ""))
                 .ForMember(dest => dest.Timestamp, opt => opt.Ignore());

@@ -66,13 +66,20 @@ app.UseStaticFiles();
 app.MapControllers();
 
 // Health check endpoint
-app.MapGet("/api/health", () => Results.Ok(new
+app.MapGet("/api/health", async (AppDbContext db) =>
 {
-    status = "healthy",
-    service = "ArogyaPulse.Api",
-    version = "2.0.0",
-    timestamp = DateTime.UtcNow
-}));
+    bool dbHealthy = false;
+    try { dbHealthy = await db.Database.CanConnectAsync(); } catch { }
+
+    return Results.Ok(new
+    {
+        status = dbHealthy ? "healthy" : "degraded",
+        database = dbHealthy ? "healthy" : "unhealthy",
+        service = "ArogyaPulse.Api",
+        version = "2.0.0",
+        timestamp = DateTime.UtcNow
+    });
+});
 
 if (app.Environment.IsDevelopment())
 {

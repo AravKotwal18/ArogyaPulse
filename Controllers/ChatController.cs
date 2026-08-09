@@ -18,9 +18,10 @@ namespace ArogyaPulse.Api.Controllers
         [HttpPost]
         public async Task<IActionResult> Ask([FromBody] ChatRequestDto request)
         {
-            if (!ModelState.IsValid || string.IsNullOrWhiteSpace(request.Query))
+            string queryText = !string.IsNullOrWhiteSpace(request.Message) ? request.Message : request.Query;
+            if (string.IsNullOrWhiteSpace(queryText))
             {
-                return BadRequest(new { success = false, message = "Query cannot be empty" });
+                return BadRequest(new { success = false, message = "Query or message cannot be empty." });
             }
 
             var result = await _chatService.GetGuidanceAsync(request);

@@ -23,6 +23,8 @@ namespace ArogyaPulse.Api.Models
         public double Temp { get; set; }
         [Required, Range(0, 600)]
         public int Glucose { get; set; }
+        [MaxLength(100)]
+        public string LocalRecordId { get; set; } = string.Empty;
         [MaxLength(500)]
         public string Symptoms { get; set; } = string.Empty;
         public bool IsPregnant { get; set; } = false;

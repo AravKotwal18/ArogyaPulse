@@ -82,5 +82,30 @@ namespace ArogyaPulse.Api.Controllers
 
             return Ok(new { success = true, data = stats });
         }
+
+        [HttpGet("stats/trends")]
+        public async Task<IActionResult> GetTrends()
+        {
+            var patients = await _repository.GetAllAsync();
+            var now = DateTime.UtcNow.Date;
+
+            var trends = new List<DailyTrendDto>();
+            for (int i = 6; i >= 0; i--)
+            {
+                var targetDate = now.AddDays(-i);
+                var dayPatients = patients.Where(p => p.Timestamp.Date == targetDate).ToList();
+
+                trends.Add(new DailyTrendDto
+                {
+                    Date = targetDate.ToString("yyyy-MM-dd"),
+                    Screenings = dayPatients.Count,
+                    HighRiskCount = dayPatients.Count(p => p.RiskLevel == "High"),
+                    MediumRiskCount = dayPatients.Count(p => p.RiskLevel == "Medium"),
+                    LowRiskCount = dayPatients.Count(p => p.RiskLevel == "Low")
+                });
+            }
+
+            return Ok(new { success = true, data = trends });
+        }
     }
 }
