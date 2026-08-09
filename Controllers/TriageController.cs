@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Mvc;
 using ArogyaPulse.Api.Interfaces;
 using ArogyaPulse.Api.DTOs;
 using AutoMapper;
-
 namespace ArogyaPulse.Api.Controllers
 {
     [ApiController]
@@ -39,6 +38,8 @@ namespace ArogyaPulse.Api.Controllers
                     p.Id,
                     p.Name,
                     p.Age,
+                    p.Gender,
+                    p.BloodGroup,
                     p.Village,
                     p.Bp,
                     p.SpO2,
