@@ -7,7 +7,7 @@ namespace ArogyaPulse.Api.DTOs
         public List<string> Breakdown { get; set; } = new();
         public List<string> ActionRecommendations { get; set; } = new();
         public string TriageProtocol { get; set; } = "ArogyaPulse Screening Protocol v1";
-        public string Disclaimer { get; set; } = "This is a screening aid, not a clinical diagnosis. Findings should be reviewed by a qualified healthcare professional.";
+        public string Disclaimer { get; set; } = "This is a screening aid, not a clinical diagnosis. All findings must be reviewed by a qualified healthcare professional.";
         public DateTime EvaluatedAt { get; set; } = DateTime.UtcNow;
     }
 }
