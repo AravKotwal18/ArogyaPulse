@@ -10,6 +10,10 @@ ArogyaPulse bridges the critical gap between frontline **ASHA (Accredited Social
 
 ---
 
+Demo Video: https://github.com/AravKotwal18/ArogyaPulse/blob/main/DemoVideo.mp4
+
+---
+
 ## Problem Statement
 
 In rural India, ASHA (Accredited Social Health Activist) workers and primary health workers often lack immediate clinical decision support when recording patient vitals. Critical conditions such as severe hypoxia (SpO₂ < 90%), hypertensive crises, gestational pre-eclampsia, hypoglycemia, and high fever frequently go unrecognized or are delayed in escalation to district hospitals. This leads to preventable morbidity and mortality, especially among pregnant women and patients in remote villages.
