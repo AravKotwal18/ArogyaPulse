@@ -21,12 +21,40 @@ namespace ArogyaPulse.Api.DTOs
         public int? PatientId { get; set; }
     }
 
+    public class ExtractedVitalsDto
+    {
+        public string? Bp { get; set; }
+        public int SpO2 { get; set; }
+        public double Temp { get; set; }
+        public int Glucose { get; set; }
+    }
+
     public class ChatResponseDto
     {
         /// <summary>
         /// Main assistant response shown to the ASHA worker.
         /// </summary>
         public string Response { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Detected language of the input query (e.g. English, Hindi).
+        /// </summary>
+        public string LanguageDetected { get; set; } = "English";
+
+        /// <summary>
+        /// Extracted clinical vital signs from query or patient record.
+        /// </summary>
+        public ExtractedVitalsDto? ExtractedVitals { get; set; }
+
+        /// <summary>
+        /// Extracted clinical symptoms.
+        /// </summary>
+        public List<string> ExtractedSymptoms { get; set; } = new();
+
+        /// <summary>
+        /// Automated triage evaluation result based on extracted vitals.
+        /// </summary>
+        public TriageResultDto? TriageEvaluation { get; set; }
 
         /// <summary>
         /// AI-generated clinical alerts that should
