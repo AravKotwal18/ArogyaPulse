@@ -73,7 +73,7 @@ The system follows a clear clinical disclaimer: it is a **screening aid**, not a
 | Arav Kotwal       | Full-Stack Developer & Lead | https://github.com/AravKotwal18  |
 | Agastaya Jindal   | Backend Developer           | https://github.com/Agastaya007   |
 | Aditya Ranjan     | Frontend                    | https://github.com/artechdelhi20 |
-| Karthik Natarajan | Frontend                    | https://github.com/karthil471    |
+| Karthik Natarajan | Frontend                    | https://github.com/karthik471    |
 
 ---
 
